@@ -10,13 +10,18 @@
     function link(scope, elem) {
       elem.bind('click', function () {
         c8yCumulocity.logout();
-
+        scope.ngClick();
       });
     }
 
     return {
+      priority: 1,
+      terminal: true,
       restrict: 'A',
-      link: link
+      link: link,
+      scope: {
+        ngClick: '&'
+      }
     };
   }
 })();

@@ -103,6 +103,9 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
         currentUser = res.data;
         currentUser.tenant = getTenantFromSelf(currentUser.self);
         return currentUser;
+      }).catch(function () {
+        currentUser = null;
+        return $q.reject();
       });
     }
 
@@ -382,6 +385,10 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
       .then(_.partial(confirmToken, remember));
   }
 
+  function logout() {
+    currentUser = null;
+  }
+
   function getToken(tenant, username, password) {
     return btoa(
       (tenant ? tenant + '/' : '') +
@@ -455,6 +462,7 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
     hasRole: hasRole,
     getDevicePermissions: getDevicePermissions,
     login: login,
+    logout: logout,
     isAdmin: isAdmin,
     isCurrentPassword: isCurrentPassword
   };
