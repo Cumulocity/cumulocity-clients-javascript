@@ -111,26 +111,20 @@
         user,
         password,
         remember
-      ).then(setUser);
+      ).then(setUser).then(function () {
+        $rootScope.$emit('c8y.api.login');
+      });
     }
 
     function setUser(user) {
       var c8y = $rootScope.c8y = $rootScope.c8y || {};
       c8y.user = user;
-      c8yUser.logout();
-      if (user) {
-        $rootScope.$emit('c8y.api.login');
-      }
-      else {
-        $rootScope.$emit('c8y.api.logout');
-      }
     }
 
     function logout() {
       setUser(null);
-      info.token = null;
-      $window.localStorage.removeItem(STORAGE_KEY);
-      $window.sessionStorage.removeItem(STORAGE_KEY);
+      c8yUser.logout();
+      $rootScope.$emit('c8y.api.logout');
     }
 
     var result = {

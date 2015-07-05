@@ -103,7 +103,7 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
         currentUser = res.data;
         currentUser.tenant = getTenantFromSelf(currentUser.self);
         return currentUser;
-      }).catch(function () {
+      }, function () {
         currentUser = null;
         return $q.reject();
       });
@@ -296,7 +296,7 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
 
   function getPassword(user) {
     var token = c8yAuth.decodeToken(info.token);
-    return user.password || token.password
+    return user.password || token.password;
   }
 
   function isCurrentPassword(password) {
@@ -376,7 +376,7 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
     };
 
     return buildUserUrl(user).then(function (url) {
-      return $http.get(url+"/devicePermissions", cfg);
+      return $http.get(url + '/devicePermissions', cfg);
     });
   }
 
@@ -386,7 +386,9 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
   }
 
   function logout() {
+    deleteToken();
     currentUser = null;
+    info.token = null;
   }
 
   function getToken(tenant, username, password) {
@@ -399,23 +401,14 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
 
   function confirmToken(remember, _token) {
     info.token = _token;
-    var user;
     return $http.get(c8yBase.url(currentUserPath), {
       headers: getHeaders(_token)
     }).then(function (res) {
       info.token = _token;
       setToken(_token, remember);
-      user = res.data;
-    })
-    .then(
-      angular.noop,
-      function () {
-        if (getToken()) {
-          deleteToken();
-        }
-      }
-    ).then(function () {
-      return user;
+      return res.data;
+    }, function () {
+      deleteToken();
     });
   }
 
@@ -428,7 +421,9 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
   }
 
   function deleteToken() {
-    return window.localStorage.removeItem('_tcy8');
+    var TOKEN = '_tcy8';
+    window.localStorage.removeItem(TOKEN);
+    window.sessionStorage.removeItem(TOKEN);
   }
 
   function isAdmin(user) {
@@ -438,8 +433,8 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
     return admin;
   }
 
-  function getHeaders(_token) {
-    var t = _token || TOKEN;
+  function getHeaders(token) {
+    var t = token || info.token;
     return {
       Authorization: 'Basic ' + t,
       UseXBasic: true,
