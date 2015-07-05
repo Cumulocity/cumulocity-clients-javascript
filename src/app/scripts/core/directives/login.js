@@ -13,7 +13,7 @@
           scope.tenant(),
           scope.user(),
           scope.password(),
-          scope.remember()
+          scope.rememberMe()
         ).then(scope.onSuccess).catch(scope.onFailure);
       });
     }
@@ -25,7 +25,7 @@
         tenant: '&',
         user: '&',
         password: '&',
-        remember: '&',
+        rememberMe: '&',
         onSuccess: '&',
         onFailure: '&'
       }

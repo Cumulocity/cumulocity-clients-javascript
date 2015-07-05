@@ -9,7 +9,7 @@ module.exports = function (grunt) {
   grunt.config('uglify.build', {
     options: {
       mangle: false,
-      beatufiy: true,
+      beautify: true,
       sourceMap: true
     },
     files: [{
