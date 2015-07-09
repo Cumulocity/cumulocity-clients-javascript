@@ -1,5 +1,5 @@
 (function () {
-  angular.module('c8y.core').directive('c8yLogout', [
+  angular.module('c8y.sdk').directive('c8yLogout', [
     'c8yCumulocity',
     c8yLogout
   ]);
@@ -8,15 +8,15 @@
     c8yCumulocity
   ) {
     function link(scope, elem) {
-      elem.bind('click', function () {
+      elem.bind('click', function (event) {
         c8yCumulocity.logout();
         scope.ngClick();
+        event.stopPropagation();
       });
     }
 
     return {
       priority: 1,
-      terminal: true,
       restrict: 'A',
       link: link,
       scope: {

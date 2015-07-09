@@ -1,5 +1,5 @@
 (function () {
-  angular.module('c8y.core').directive('c8yLogin', [
+  angular.module('c8y.sdk').directive('c8yLogin', [
     'c8yCumulocity',
     c8yLogin
   ]);

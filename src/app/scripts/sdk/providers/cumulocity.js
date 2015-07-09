@@ -3,7 +3,7 @@
 
   var STORAGE_KEY = '_tcy8';
 
-  angular.module('c8y.core').provider('c8yCumulocity', [
+  angular.module('c8y.sdk').provider('c8yCumulocity', [
     'info',
     c8yCumulocityProvider
   ]).run([

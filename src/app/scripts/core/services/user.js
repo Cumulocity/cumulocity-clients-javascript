@@ -23,7 +23,8 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
     },
     configCurrentUser = {
       headers: c8yBase.contentHeaders('user', true)
-    };
+    },
+    TOKEN = '_tcy8';
 
   function applyTenant(url, tenant) {
     return url.replace(/{tenant}/g, tenant);
@@ -414,14 +415,13 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
 
   function setToken(_token, remember) {
     if (remember) {
-      window.localStorage.setItem('_tcy8', _token);
+      window.localStorage.setItem(TOKEN, _token);
     } else {
-      window.sessionStorage.setItem('_tcy8', _token);
+      window.sessionStorage.setItem(TOKEN, _token);
     }
   }
 
   function deleteToken() {
-    var TOKEN = '_tcy8';
     window.localStorage.removeItem(TOKEN);
     window.sessionStorage.removeItem(TOKEN);
   }
@@ -438,7 +438,6 @@ function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
     return {
       Authorization: 'Basic ' + t,
       UseXBasic: true,
-      // 'X-Cumulocity-Application-Key': 'devicemanagement-application-key',
       Accept: 'application/vnd.com.nsn.cumulocity.user+json;'
     };
   }

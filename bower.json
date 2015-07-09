@@ -18,12 +18,10 @@
   "dependencies": {
     "lodash": "2.4.1",
     "jquery": "2.1.1",
-    "moment": "2.9.0",
+    "moment": "2.8.3",
     "angular": "1.2.20",
-    "angular-route": "1.2.20",
-    "angular-animate": "1.2.20",
-    "angular-sanitize": "1.2.20",
-    "angular-ui-bootstrap-bower": "0.11.0"
+    "ng-file-upload": "1.6.12",
+    "cometd-jquery": "2.7.0"
   },
   "ignore": [
     "**/.*",
