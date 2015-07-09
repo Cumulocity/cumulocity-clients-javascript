@@ -1,5 +1,5 @@
 {
-  "name": "cumulocity-client-javascript",
+  "name": "cumulocity-clients-javascript",
   "version": "6.3.0",
   "description": "Cumulocity core services on top of Angular.js for rapid web application development",
   "main": "index.js",
