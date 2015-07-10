@@ -44,12 +44,7 @@
 
       function callService() {
         var filter = scope.filter || {};
-        switch(serviceName) {
-          case 'inventory':
-            return $injector.get('c8yInventory').list(filter).then(function (res) { return res.data; });
-          default:
-            return $injector.get('c8y' + capitalize(serviceName)).list(filter);
-        }
+        return $injector.get('c8y' + capitalize(serviceName)).list(filter);
       }
 
       function capitalize(s) {
