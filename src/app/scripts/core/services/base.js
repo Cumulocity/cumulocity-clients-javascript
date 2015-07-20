@@ -586,7 +586,7 @@ function ($rootScope, $http, $window, info) {
     if (!str) {
       str = '';
     }
-    return str.replace(/c8y_/, '').replace(/([A-Z])/g, ' $1').replace(/^\s*/, '').replace(/\s*$/, '');
+    return String(str).replace(/c8y_/, '').replace(/([A-Z])/g, ' $1').replace(/^\s*/, '').replace(/\s*$/, '');
   }
 
   $http.defaults.headers.common[HEADER_APPKEY] = appKey;
