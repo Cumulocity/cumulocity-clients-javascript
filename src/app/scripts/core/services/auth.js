@@ -71,10 +71,11 @@ angular.module('c8y.core')
    */
   function transformRequest(config) {
     var url = config.url,
-      isCumulocity = !url.match(/http/) || url.match(/^https?\:\/\/.*cumulocity\.com/);
+      isCumulocity = !url.match(/http/) || url.match(/^https?\:\/\/.*cumulocity\.com/),
+      isBaseUrl = url.startsWith(info.baseUrl);
 
     //Make sure we don't want to send the auth token to another server.
-    if (isCumulocity) {
+    if (isCumulocity || isBaseUrl) {
       if (!config.headers) {
         config.headers = {};
       }
