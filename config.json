@@ -55,6 +55,8 @@
     "bower_components/cometd-jquery/cometd-javascript/common/src/main/js/org/cometd/LongPollingTransport.js",
     "bower_components/cometd-jquery/cometd-javascript/common/src/main/js/org/cometd/CallbackPollingTransport.js",
     "bower_components/cometd-jquery/cometd-javascript/common/src/main/js/org/cometd/WebSocketTransport.js",
-    "bower_components/cometd-jquery/cometd-javascript/jquery/src/main/webapp/jquery/jquery.cometd.js"
+    "bower_components/cometd-jquery/cometd-javascript/jquery/src/main/webapp/jquery/jquery.cometd.js",
+    "bower_components/leaflet/dist/leaflet.js",
+    "bower_components/d3/d3.js"
   ]
 }
