@@ -1,6 +1,6 @@
 {
   "name": "cumulocity-clients-javascript",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "authors": [
     "Cumulocity GmbH"
   ],
@@ -21,7 +21,8 @@
     "moment": "2.8.3",
     "angular": "1.2.20",
     "ng-file-upload": "1.6.12",
-    "cometd-jquery": "2.7.0"
+    "cometd-jquery": "2.7.0",
+    "d3": "3.5.5"
   },
   "ignore": [
     "**/.*",
