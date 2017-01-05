@@ -11,4 +11,4 @@ This library contains the following `AngularJS` modules:
   [2]: http://maven.apache.org/
   [3]: https://www.cumulocity.com/guides
   [4]: http://www.cumulocity.com/guides/web/introduction/
-  [5]: http://resources.cumulocity.com/documentation/jssdk/latest/#/core
+  [5]: http://resources.cumulocity.com/documentation/jssdk/6.3.0
