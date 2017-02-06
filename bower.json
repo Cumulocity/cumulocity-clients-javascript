@@ -21,7 +21,8 @@
     "moment": "2.15.1",
     "angular": "1.5.8",
     "ng-file-upload": "1.6.12",
-    "cometd-jquery": "3.0.0"
+    "cometd-jquery": "3.0.0",
+    "angular-gettext": "2.3.8"
   },
   "ignore": [
     "**/.*",
