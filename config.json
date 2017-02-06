@@ -67,6 +67,7 @@
     "bower_components/moment/moment.js",
     "bower_components/angular/angular.js",
     "bower_components/ng-file-upload/angular-file-upload.js",
+    "bower_components/angular-gettext/dist/angular-gettext.js",
     "bower_components/cometd-jquery/cometd-javascript/common/src/main/js/org/cometd/cometd-namespace.js",
     "bower_components/cometd-jquery/cometd-javascript/common/src/main/js/org/cometd/cometd-json.js",
     "bower_components/cometd-jquery/cometd-javascript/common/src/main/js/org/cometd/Cometd.js",
