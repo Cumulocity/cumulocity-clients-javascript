@@ -19,21 +19,6 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
     contentType = 'cepModule',
     cacheCreateOrDeploy = {};
 
-  function wrapFileBody(body) {
-    var _boundary = '--' + boundary(),
-      output =  _boundary + '\r\n' +
-        'Content-Disposition: form-data; name="file"; filename="module.cep"\r\n' +
-        'Content-Type: text/plain\r\n'+ '\r\n' +
-        body + '\r\n' +
-        _boundary;
-
-    return output;
-  }
-
-  function boundary() {
-    return '83ff53821b7c';
-  }
-
   function updateStatus(module) {
     var url = c8yBase.url(path + '/' + module.id),
       cfg = {
@@ -53,14 +38,13 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
   function updateModule(module) {
     var id = module.id,
       url = c8yBase.url(path + (id ? '/' + id : '')),
-      body = wrapFileBody(module.body),
       method = (id ? 'put' : 'post'),
-      headers = angular.extend(c8yBase.contentHeaders(contentType, true), {
-        'Content-Type': 'multipart/form-data; boundary=' + boundary()
+      headers = _.assign(c8yBase.contentHeaders(contentType, true), {
+        'Content-Type': 'text/plain'
       }),
       cfg = {headers: headers};
 
-    return $http[method](url, body, cfg);
+    return $http[method](url, module.body, cfg);
   }
 
   /**
@@ -201,11 +185,11 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
         }
       };
 
-    //this params is just to prevent angular from overridding the headers of the second request
     $http.get(url, dataConfig)
       .then(function (res) {
         module = res.data;
-        $http.get(url, fileConfig).success(function(data) {
+        //preventing the request with the text/plain to return the value from cache
+        $http.get(url + '?text', fileConfig).success(function(data) {
           body = data;
           checkFinal();
         });
@@ -253,8 +237,8 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
    * @example
    * <pre>
    *   $scope.cepModule = {
-   *     name: 'Select location change event once for 60 seconds',
-   *     value: 'select * from EventCreated e\n' +
+   *     name: 'Select_location_change_event_once_for_60_seconds',
+   *     body: 'select * from EventCreated e\n' +
    *            'where getObject(e, "c8y_LocationMeasurement") is not null\n' +
    *            'output first every 60 seconds'
    *   };
@@ -265,7 +249,7 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
    */
   function save(_module) {
     var def = $q.defer(),
-     module = angular.copy(_module),
+     module = _.cloneDeep(_module),
      firstStep;
 
     if (module.body) {
@@ -275,6 +259,7 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
 
       firstStep = updateModule(module).then(null, function (data) {
         def.reject(data);
+        return $q.reject();
       });
     } else {
       firstStep = detail(module);
@@ -321,7 +306,7 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
    * </pre>
    */
   function detailByName(name) {
-    return list()
+    return listWithSmartRules()
       .then(function (modules) {
         var _module;
         modules.forEach(function (m) {
@@ -464,7 +449,7 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
    * <pre>
    *   c8yCepModule.examples().then(function (examples) {
    *     $scope.examples = [];
-   *     angular.forEach(examples, function (example) {
+   *     _.forEach(examples, function (example) {
    *       $scope.examples.push(example);
    *     });
    *   }):
@@ -508,16 +493,19 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
  * @description
  * Provides a list of example CEP modules. The examples include:
  *
- * - *Send alarms that are active since 30 minutes to email*.
- * - *Send alarm immediately to email*.
- * - *Send cancel immediately to email*.
- * - *Select temperature readings over 100 degree*.
- * - *Create alarm when temperature over 100 degree*.
- * - *Create alarm when temperature below 0 degree*.
- * - *Create close replay operation when temperature readings over 100 degree*.
- * - *Select location change event once for 60 seconds*.
- * - *Send email notification with current temperature*.
  * - *Change the severities of alarms based on activity time*.
+ * - *Create alarm if temperature was to low for 15 minutes*.
+ * - *Create alarm on not processed operation*
+ * - *Create alarm when temperature below 0 degree*.
+ * - *Create alarm when temperature over 100 degree*.
+ * - *Create close relay operation when temperature readings over 100 degree*.
+ * - *Display current temperature on device*
+ * - *Schedule device restart every day at 1am*
+ * - *Select location change event once for 60 seconds*.
+ * - *Select temperature readings over 100 degree*
+ * - *Send alarms that are active since 30 minutes to email*.
+ * - *Send sales to Zapier*.
+ * - *Send simulator temperature to Zapier*.
  *
  * Returns array with example CEP modules as objects with the following properties:
  *
@@ -529,7 +517,7 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
  * <pre>
  *   $q.when(c8yCepModuleExamples).then(function (examples) {
  *     $scope.examples = [];
- *     angular.forEach(examples, function (example) {
+ *     _.forEach(examples, function (example) {
  *       $scope.examples.push(example);
  *     });
  *   }):
@@ -545,191 +533,238 @@ function($http, $q, $timeout, c8yBase, c8yCepModuleExamples) {
  *   </div>
  * </pre>
  */
-.value('c8yCepModuleExamples', [
-  {
-    name: 'Send alarms that are active since 30 minutes to email',
-    value:  'insert into SendEmail\n' +
-            'select\n' +
-            '  "info@cumulocity.com" as sender,\n' +
-            '  "YOUR_EMAIL_HERE" as receiver,\n' +
-            '  "Alarm active since 30 mins: " || e.alarm.text as subject,\n' +
-            '  "Time: " || e.alarm.time.format() || \n' +
-            '  " Severity: " || e.alarm.severity.name() || \n' +
-            '  " Source: " || findManagedObjectById(e.alarm.source.value).getName() as text\n' +
-            'from pattern [\n' +
-            '   every e = AlarmCreated(alarm.status = CumulocityAlarmStatuses.ACTIVE, alarm.severity = CumulocitySeverities.CRITICAL) \n' +
-            '   -> (timer:interval(30 minutes) \n' +
-            '      and not AlarmUpdated(alarm.status != CumulocityAlarmStatuses.ACTIVE, alarm.id.value = e.alarm.id.value))\n' +
-            '];'
-  },
-  {
-    name: 'Select temperature readings over 100 degree',
-    value: 'select * from MeasurementCreated e\n' +
-           'where getNumber(e, "c8y_TemperatureMeasurement.T.value") > 100'
-  },
-  {
-    name: 'Create alarm when temperature over 100 degree',
-    value: 'insert into CreateAlarm \n'+
-           '  select\n'+
-           '    e.measurement.time as time,\n'+
-           '    e.measurement.source.value as source,\n'+
-           '    "com_cumulocity_TemperatureAlert" as type,\n'+
-           '    "Temperature too high" as text,\n'+
-           '    "ACTIVE" as status,\n'+
-           '    "CRITICAL" as severity\n'+
-           '  from MeasurementCreated e\n'+
-           '  where getNumber(e, "c8y_TemperatureMeasurement.T.value") > 100'
-  },
-  {
-    name: 'Create alarm when temperature below 0 degree',
-    value: 'insert into CreateAlarm \n'+
-           '  select\n'+
-           '    e.measurement.time as time,\n'+
-           '    e.measurement.source.value as source,\n'+
-           '    "com_cumulocity_TemperatureAlert" as type,\n'+
-           '    "Temperature too low" as text,\n'+
-           '    "ACTIVE" as status,\n'+
-           '    "CRITICAL" as severity\n'+
-           '  from MeasurementCreated e\n'+
-           '  where getNumber(e, "c8y_TemperatureMeasurement.T.value") < 0'
-  },
-  {
-    name: 'Create close relay operation when temperature readings over 100 degree',
-    value:  'insert into CreateOperation\n' +
-            '  select\n' +
-            '    "PENDING" as status,\n' +
-            '    «heating ID» as deviceId,\n' +
-            '    {\n' +
-            '      "c8y_Relay.relayState", "CLOSED"\n' +
-            '    } as fragments\n' +
-            '  from MeasurementCreated e\n' +
-            '  where getNumber(e, "c8y_TemperatureMeasurement.T.value") > 100'
-  },
-  {
-    name: 'Schedule device restart every day at 1am',
-    value:  'insert into CreateOperation\n' +
-            'select\n' +
-            '  "PENDING" as status,\n' +
-            '  «device ID» as deviceId,\n' +
-            '  { "c8y_Restart", {} } as fragments\n' +
-            'from pattern [every timer:at(*, 1, *, *, *, *)];'
-  },
-  {
-    name: 'Select location change event once for 60 seconds',
-    value:  'select * from EventCreated e\n' +
-            'where getObject(e, "c8y_LocationMeasurement") is not null\n' +
-            'output first every 60 seconds'
-  },
-  {
-    name: 'Display current temperature on device',
-    value:  'expression string js:prepareText(temp) [\n' +
-            '  function format(text, params){\n' +
-            '    for(param in params) {\n' +
-            '        text = text.replace("{" + param + "}", params[param])\n' +
-            '    }\n' +
-            '    return text\n' +
-	          '  }\n' +
-            '  format("Current temperature is {0}", [temp])\n' +
-            ']\n' +
-            'insert into CreateOperation\n' +
-            '	select\n' +
-            '      "PENDING" as status,\n' +
-            '      e.measurement.source.value as deviceId,\n' +
-            '      { "c8yDisplay", prepareText(\n' +
-            '        getNumber(e, "c8y_TemperatureMeasurement.T.value")\n' +
-            '	   ) } as fragments\n' +
-            '    from MeasurementCreated e\n' +
-            '    where e.measurement.type = "c8y_TemperatureMeasurement";'
-  },
-  {
-    name: 'Change the severities of alarms based on activity time',
-    value:  '/* Create \"context\" - definition of a group of events to be processed separately.\n' +
-            ' * Context \"Alarms\" consists of AlarmCreated and AlarmUpdated: \n' +
-            ' * with the same source and type = \"power off\". */\n' +
-            'create context Alarms partition by \n' +
-            'alarm.source from AlarmCreated(alarm.type = "power off"),\n' +
-            'alarm.source from AlarmUpdated(alarm.type = "power off");\n' +
-            '\n' +
-            '/* Update severity for all active AlarmCreated \n' +
-            ' * after which there is no change to other status in 15 minutes. */\n' +
-            'context Alarms \n' +
-            'insert into UpdateAlarm \n' +
-            'select \n' +
-            '   a.alarm.id as id,\n' +
-            '   "MAJOR" as severity\n' +
-            'from pattern [\n' +
-            '   every a = AlarmCreated(alarm.status = CumulocityAlarmStatuses.ACTIVE) \n' +
-            '   -> (timer:interval(15 minutes) \n' +
-            '      and not AlarmUpdated(alarm.status != CumulocityAlarmStatuses.ACTIVE))\n'+
-            '];'
-  },
-  {
-    name: 'Create alarm if temperature was to low for 15 minutes',
-    value:  'create schema NotZeroMeasurementCreated (\n'+
-            '  measurement Measurement\n'+
-            ');\n'+
-            'create schema ZeroMeasurementCreated (\n'+
-            '  measurement Measurement\n'+
-            ');\n'+
-            'create schema CheckTimeDifference (\n'+
-            '  firstMeasurement Measurement,\n'+
-            '  lastMeasurement Measurement\n'+
-            ');\n'+
-            'insert into CreateAlarm\n'+
-            '  select\n'+
-            '    check.lastMeasurement.source as source,\n'+
-            '    check.lastMeasurement.time as time,\n'+
-            '    "c8y_LowTemperatureAlarm" as type,\n'+
-            '    CumulocitySeverities.WARNING as severity,\n'+
-            '    CumulocityAlarmStatuses.ACTIVE as status,\n'+
-            '    "Temperature was too low for more than 15 minutes" as text\n'+
-            '  from CheckTimeDifference check\n'+
-            '  where check.lastMeasurement.time.after(check.firstMeasurement.time, 15min);\n'+
-            'insert into CheckTimeDifference\n'+
-            '  select\n'+
-            '    firstM.measurement as firstMeasurement,\n'+
-            '    lastM.measurement as lastMeasurement\n'+
-            '  from pattern [\n'+
-            '    every (firstM = NotZeroMeasurementCreated ->\n'+
-            '    ZeroMeasurementCreated(measurement.source.value =firstM.measurement.source.value)) ->\n'+
-            '    ZeroMeasurementCreated until lastM = NotZeroMeasurementCreated(measurement.source.value = firstM.measurement.source.value)\n'+
-            '  ];\n'+
-            'insert into NotZeroMeasurementCreated\n'+
-            '  select\n'+
-            '    m.measurement as measurement\n'+
-            '  from\n'+
-            '    MeasurementCreated m\n'+
-            '  where getNumber(m, "c8y_TemperatureMeasurement.T.value") > 0\n'+
-            '  AND m.measurement.type = "c8y_TemperatureMeasurement";\n'+
-            'insert into ZeroMeasurementCreated\n'+
-            '  select\n'+
-            '    m.measurement as measurement\n'+
-            '  from\n'+
-            '    MeasurementCreated m\n'+
-            '  where getNumber(m, "c8y_TemperatureMeasurement.T.value") <= 0\n'+
-            '  AND m.measurement.type = "c8y_TemperatureMeasurement";'
-  },
-  {
-    name: 'Send simulator temperature to Zapier',
-    value: '@Name("simulatortemperature")\n' +
-           'select\n' +
-           '  e.measurement.source.value as id,\n' +
-           '  findManagedObjectById(e.measurement.source.value).getName() as name,\n' +
-           '  e.measurement.time.format() as time,\n' +
-           '  getNumber(e, "c8y_TemperatureMeasurement.T.value") as value,\n' +
-           'from MeasurementCreated e\n' +
-           '  where e.measurement.type = "TemperatureMeasurement"\n'
-	},
-	{
-		name: 'Send sales to Zapier',
-		value: '@Name("sales")\n' +
-           'select\n' +
-           '  getString(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.vendingMachine_name") as id,\n' +
-           '  getString(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.product_name") as name,\n' +
-           '  e.event.time.format() as time,\n' +
-           '  getNumber(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.totalPaid") as value,\n' +
-           '  getString(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.payment_type") as text\n' +
-           'from EventCreated e\n' +
-           '  where e.event.type = "com_nsn_startups_vendme_LiveSalesReport"\n'
-	}
-]);
+.factory('c8yCepModuleExamples', ['gettext', function (gettext) {
+  return [
+    {
+      name: gettext('Change the severities of alarms based on activity time'),
+      value:
+        '/* Create \"context\" - definition of a group of events to be processed separately.\n' +
+        ' * Context \"Alarms\" consists of AlarmCreated and AlarmUpdated: \n' +
+        ' * with the same source and type = \"power off\". */\n' +
+        'create context Alarms partition by \n' +
+        'alarm.source from AlarmCreated(alarm.type = "power off"),\n' +
+        'alarm.source from AlarmUpdated(alarm.type = "power off");\n' +
+        '\n' +
+        '/* Update severity for all active AlarmCreated \n' +
+        ' * after which there is no change to other status in 15 minutes. */\n' +
+        'context Alarms \n' +
+        'insert into UpdateAlarm \n' +
+        'select \n' +
+        '   a.alarm.id as id,\n' +
+        '   "MAJOR" as severity\n' +
+        'from pattern [\n' +
+        '   every a = AlarmCreated(alarm.status = CumulocityAlarmStatuses.ACTIVE) \n' +
+        '   -> (timer:interval(15 minutes) \n' +
+        '      and not AlarmUpdated(alarm.status != CumulocityAlarmStatuses.ACTIVE))\n'+
+        '];'
+    },
+    {
+      name: gettext('Create alarm if temperature was to low for 15 minutes'),
+      value:
+        'create schema NotZeroMeasurementCreated (\n'+
+        '  measurement Measurement\n'+
+        ');\n'+
+        'create schema ZeroMeasurementCreated (\n'+
+        '  measurement Measurement\n'+
+        ');\n'+
+        'create schema CheckTimeDifference (\n'+
+        '  firstMeasurement Measurement,\n'+
+        '  lastMeasurement Measurement\n'+
+        ');\n'+
+        'insert into CreateAlarm\n'+
+        '  select\n'+
+        '    check.lastMeasurement.source as source,\n'+
+        '    check.lastMeasurement.time as time,\n'+
+        '    "c8y_LowTemperatureAlarm" as type,\n'+
+        '    CumulocitySeverities.WARNING as severity,\n'+
+        '    CumulocityAlarmStatuses.ACTIVE as status,\n'+
+        '    "Temperature was too low for more than 15 minutes" as text\n'+
+        '  from CheckTimeDifference check\n'+
+        '  where check.lastMeasurement.time.after(check.firstMeasurement.time, 15min);\n'+
+        'insert into CheckTimeDifference\n'+
+        '  select\n'+
+        '    firstZero.measurement as firstMeasurement,\n'+
+        '    firstNotZeroAgain.measurement as lastMeasurement\n'+
+        '  from pattern [\n'+
+        '    every (lastNotZero = NotZeroMeasurementCreated ->\n'+
+        '    firstZero = ZeroMeasurementCreated(measurement.source.value = lastNotZero.measurement.source.value)) ->\n'+
+        '    ZeroMeasurementCreated until firstNotZeroAgain = NotZeroMeasurementCreated(measurement.source.value = lastNotZero.measurement.source.value)\n'+
+        '  ];\n'+
+        'insert into NotZeroMeasurementCreated\n'+
+        '  select\n'+
+        '    m.measurement as measurement\n'+
+        '  from\n'+
+        '    MeasurementCreated m\n'+
+        '  where getNumber(m, "c8y_TemperatureMeasurement.T.value") > 0\n'+
+        '  AND m.measurement.type = "c8y_TemperatureMeasurement";\n'+
+        'insert into ZeroMeasurementCreated\n'+
+        '  select\n'+
+        '    m.measurement as measurement\n'+
+        '  from\n'+
+        '    MeasurementCreated m\n'+
+        '  where getNumber(m, "c8y_TemperatureMeasurement.T.value") <= 0\n'+
+        '  AND m.measurement.type = "c8y_TemperatureMeasurement";'
+      },
+      {
+        name: gettext('Create alarm on not processed operation'),
+        value:
+          'create constant variable int operation_timeout_in_seconds = 300; \n' +
+          'create constant variable string alarm_severity = "MAJOR"; \n' +
+          'create constant variable string alarm_text = "Operation with id=#{id.value} haven\'t been finished!"; \n' +
+          'create constant variable string alarm_type = "c8y_OperationNotFinished"; \n'+
+          'create schema OperationNotFinished ( operation com.cumulocity.model.operation.Operation ); \n' +
+          'create schema OperationFinished ( operation com.cumulocity.model.operation.Operation, alarm Alarm); \n'+
+          '@Name("create_alarm_from_not_finished_operation")\n' +
+          'insert into CreateAlarm\n' +
+          '  select \n' +
+          '    operation.deviceId as source,\n' +
+          '    "ACTIVE" as status,\n' +
+          '    alarm_severity as severity,\n' +
+          '    alarm_type as type,\n' +
+          '    current_timestamp().toDate() as time,\n' +
+          '    replaceAllPlaceholders(alarm_text, operation) as text,\n' +
+          '    { "operationId", operation.id.value } as fragments \n' +
+          '  from OperationNotFinished;\n' +
+          '@Name("handle_not_finished_operation")\n' +
+          'insert into OperationNotFinished\n' +
+          '  select\n' +
+          '    prevOp.operation as operation\n' +
+          '  from pattern [ \n' +
+          '    every prevOp = OperationCreated \n' +
+          '    -> (timer:interval(operation_timeout_in_seconds second)\n' +
+          '    and not OperationUpdated(\n' +
+          '    operation.id.value = prevOp.operation.id.value\n' +
+          '    and (operation.status in (OperationStatus.SUCCESSFUL, OperationStatus.FAILED))\n' +
+          '    ))' +
+          '  ];\n'
+      },
+      {
+        name: gettext('Create alarm when temperature below 0 degree'),
+        value:
+          'insert into CreateAlarm \n'+
+          '  select\n'+
+          '    e.measurement.time as time,\n'+
+          '    e.measurement.source.value as source,\n'+
+          '    "com_cumulocity_TemperatureAlert" as type,\n'+
+          '    "Temperature too low" as text,\n'+
+          '    "ACTIVE" as status,\n'+
+          '    "CRITICAL" as severity\n'+
+          '  from MeasurementCreated e\n'+
+          '  where getNumber(e, "c8y_TemperatureMeasurement.T.value") < 0'
+      },
+      {
+        name: gettext('Create alarm when temperature over 100 degree'),
+        value:
+          'insert into CreateAlarm \n'+
+          '  select\n'+
+          '    e.measurement.time as time,\n'+
+          '    e.measurement.source.value as source,\n'+
+          '    "com_cumulocity_TemperatureAlert" as type,\n'+
+          '    "Temperature too high" as text,\n'+
+          '    "ACTIVE" as status,\n'+
+          '    "CRITICAL" as severity\n'+
+          '  from MeasurementCreated e\n'+
+          '  where getNumber(e, "c8y_TemperatureMeasurement.T.value") > 100'
+      },
+      {
+        name: gettext('Create close relay operation when temperature readings over 100 degree'),
+        value:
+          'insert into CreateOperation\n' +
+          '  select\n' +
+          '    "PENDING" as status,\n' +
+          '    «heating ID» as deviceId,\n' +
+          '    {\n' +
+          '      "c8y_Relay.relayState", "CLOSED"\n' +
+          '    } as fragments\n' +
+          '  from MeasurementCreated e\n' +
+          '  where getNumber(e, "c8y_TemperatureMeasurement.T.value") > 100'
+      },
+      {
+        name: gettext('Display current temperature on device'),
+        value:
+          'expression string js:prepareText(temp) [\n' +
+          '  function format(text, params){\n' +
+          '    for(param in params) {\n' +
+          '        text = text.replace("{" + param + "}", params[param])\n' +
+          '    }\n' +
+          '    return text\n' +
+          '  }\n' +
+          '  format("Current temperature is {0}", [temp])\n' +
+          ']\n' +
+          'insert into CreateOperation\n' +
+          '	select\n' +
+          '      "PENDING" as status,\n' +
+          '      e.measurement.source.value as deviceId,\n' +
+          '      { "c8y_Message.text", prepareText(\n' +
+          '        getNumber(e, "c8y_TemperatureMeasurement.T.value")\n' +
+          '	   ) } as fragments\n' +
+          '    from MeasurementCreated e\n' +
+          '    where e.measurement.type = "c8y_TemperatureMeasurement";'
+      },
+      {
+        name: gettext('Schedule device restart every day at 1am'),
+        value:
+          'insert into CreateOperation\n' +
+          'select\n' +
+          '  "PENDING" as status,\n' +
+          '  «device ID» as deviceId,\n' +
+          '  { "c8y_Restart", {} } as fragments\n' +
+          'from pattern [every timer:at(*, 1, *, *, *, *)];'
+      },
+      {
+        name: gettext('Select location change event once for 60 seconds'),
+        value:
+          'select * from EventCreated e\n' +
+          'where getObject(e, "c8y_LocationMeasurement") is not null\n' +
+          'output first every 60 seconds'
+      },
+      {
+        name: gettext('Select temperature readings over 100 degree'),
+        value:
+          'select * from MeasurementCreated e\n' +
+          'where getNumber(e, "c8y_TemperatureMeasurement.T.value") > 100'
+      },
+      {
+        name: gettext('Send alarms that are active since 30 minutes to email'),
+        value:
+          'insert into SendEmail\n' +
+          'select\n' +
+          '  "<RECEIVER@COMPANY.COM>" as receiver,\n' +
+          '  "Alarm active since 30 mins: " || e.alarm.text as subject,\n' +
+          '  "Time: " || e.alarm.time.format() || \n' +
+          '  " Severity: " || e.alarm.severity.name() || \n' +
+          '  " Source: " || findManagedObjectById(e.alarm.source.value).getName() as text,\n' +
+          '  "<REPLY_TO@COMPANY.COM>" as replyTo\n' +
+          'from pattern [\n' +
+          '   every e = AlarmCreated(alarm.status = CumulocityAlarmStatuses.ACTIVE, alarm.severity = CumulocitySeverities.CRITICAL) \n' +
+          '   -> (timer:interval(30 minutes) \n' +
+          '      and not AlarmUpdated(alarm.status != CumulocityAlarmStatuses.ACTIVE, alarm.id.value = e.alarm.id.value))\n' +
+          '];'
+      },
+      {
+        name: gettext('Send sales to Zapier'),
+        value:
+          '@Name("sales")\n' +
+          'select\n' +
+          '  getString(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.vendingMachine_name") as id,\n' +
+          '  getString(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.product_name") as name,\n' +
+          '  e.event.time.format() as time,\n' +
+          '  getNumber(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.totalPaid") as value,\n' +
+          '  getString(e, "com_nsn_startups_vendme_fragments_SalesReportInfo.payment_type") as text\n' +
+          'from EventCreated e\n' +
+          '  where e.event.type = "com_nsn_startups_vendme_LiveSalesReport"\n'
+      },
+      {
+        name: gettext('Send simulator temperature to Zapier'),
+        value:
+          '@Name("simulatortemperature")\n' +
+          'select\n' +
+          '  e.measurement.source.value as id,\n' +
+          '  findManagedObjectById(e.measurement.source.value).getName() as name,\n' +
+          '  e.measurement.time.format() as time,\n' +
+          '  getNumber(e, "c8y_TemperatureMeasurement.T.value") as value,\n' +
+          'from MeasurementCreated e\n' +
+          '  where e.measurement.type = "TemperatureMeasurement"\n'
+      }
+  ];
+}]);

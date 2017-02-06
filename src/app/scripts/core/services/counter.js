@@ -109,7 +109,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
       if (_.isArray(lastElem)) {
         that.dependencies = lastElem;
         that.filterFn = propertyMap[len - 2];
-        that.properties = propertyMap.slice(0, length - 2);
+        that.properties = propertyMap.slice(0, len - 2);
         return _.isFunction(that.filterFn) && _.every(that.properties, String);
       }
       if(_.isFunction(lastElem)) {
@@ -153,7 +153,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
     createPickList();
 
     function clearUndefinedProperties() {
-      filter = _.pick(filter, function (val) {
+      filter = _.pickBy(filter, function (val) {
         return val !== undefined;
       });
     }
@@ -163,8 +163,8 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
     // PropertyMap constructor class.
     function fillEmptyMappings() {
       _.forEach(_.keys(filter), function (filterName) {
-        var hasMapping = _.any(that.propertyMapList, function (propertyMap) {
-          return _.any(propertyMap.properties, function (prop) {
+        var hasMapping = _.some(that.propertyMapList, function (propertyMap) {
+          return _.some(propertyMap.properties, function (prop) {
             return prop === filterName;
           });
         });
@@ -199,7 +199,6 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
   };
 
   /**
-   * @ngdoc class
    * @name c8y.core.service:c8yCounter
    *
    * @description
@@ -310,7 +309,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
       var queryParams = hasFilter ? filterConfig.queryParams : filter;
       return $q.when(listFn(queryParams)).then(function (objs) {
         if (hasFilter) {
-          objects = _.chain(objs)
+          objects = _(objs)
             .filter(filterMatches)
             .map(map)
             .value();
@@ -369,7 +368,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
     function onNotification(evt, obj) {
       if (!isRefreshing) {
         var oldCount = that.count;
-        REALTIME_FN_MAP[evt.name](obj);
+        REALTIME_FN_MAP[evt.name || evt](obj);
         updateCount();
         var newCount = that.count;
         if(notificationCallback && newCount !== oldCount) {
@@ -447,7 +446,10 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
 
 
   /**
-   * @ngdoc property
+   * @ngdoc object
+   * @name defaultPropertyMaps
+   * @propertyOf c8y.core.service:c8yCounter
+   * @description Object Containing the default property maps
    */
   var defaultPropertyMaps = {
     date: datePropertyMap,

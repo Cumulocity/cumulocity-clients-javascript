@@ -9,456 +9,704 @@
  * @description
  * This service allows for managing users.
  */
-angular.module('c8y.core')
-.factory('c8yUser', ['$http', '$q', '$timeout', 'c8yBase', 'info', 'c8yAuth',
-function ($http, $q, $timeout, c8yBase, info, c8yAuth) {
+(function() {
   'use strict';
-  var path = 'user/{tenant}/users',
-    currentUserPath = 'user/currentUser',
-    // userContentType = c8yBase.mimeType('user'),
-    // usersContentType = c8yBase.mimeType('userCollection'),
-    currentUser = null,
-    config = {
+
+  angular.module('c8y.core')
+    .factory('c8yUser', [
+      '$http',
+      '$q',
+      '$timeout',
+      '$rootScope',
+      '$routeParams',
+      'c8yBase',
+      'c8yAuth',
+      'c8ySettings',
+      c8yUser
+    ]);
+
+  function c8yUser(
+    $http,
+    $q,
+    $timeout,
+    $rootScope,
+    $routeParams,
+    c8yBase,
+    c8yAuth,
+    c8ySettings
+  ) {
+
+    var path = 'user/{tenant}/users';
+    var currentUserPath = 'user/currentUser';
+    var currentUser = null;
+    var config = {
       headers: c8yBase.contentHeaders('user', true)
-    },
-    configCurrentUser = {
+    };
+    var configCurrentUser = {
       headers: c8yBase.contentHeaders('user', true)
-    },
-    TOKEN = '_tcy8';
+    };
 
-  function applyTenant(url, tenant) {
-    return url.replace(/{tenant}/g, tenant);
-  }
-
-  function clean(user) {
-    user = angular.copy(user);
-    if (user.id) {
-      delete user.userName;
-    }
-    delete user.id;
-    delete user.self;
-    delete user.effectiveRoles;
-    return user;
-  }
-
-  function buildUserUrl(user) {
-    var _id = user.id || user;
-    return buildUsersUrl().then(function (url) {
-      return url + '/' + _id;
-    });
-  }
-
-  function buildCurrentUserUrl() {
-    return $q.when(c8yBase.url(currentUserPath));
-  }
-
-  function buildUsersUrl() {
-    return current().then(function (user) {
-      return c8yBase.url(applyTenant(path, user.tenant));
-    });
-  }
-
-  function getTenantFromSelf(url) {
-    var FIND_TENANT = /\/user\/(\w+)\//,
-      match = url.match(FIND_TENANT);
-
-    if (match.length < 2) {
-      throw(new Error('Cannot find tenant on user self URL'));
+    function applyTenant(url, tenant) {
+      return url.replace(/\{tenant\}/g, tenant);
     }
 
-    return match[1];
-  }
-
-  /**
-   * @ngdoc function
-   * @name current
-   * @methodOf c8y.core.service:c8yUser
-   *
-   * @description
-   * Gets user that is currently logged in.
-   *
-   * @param {bool} forceUpdate Forces refreshing current user data from server.
-   *
-   * @returns {promise} Returns promise with user object that contains user id, roles list, groups list.
-   *
-   * @example
-   * <pre>
-   *   c8yUser.current(function (user) {
-   *     $scope.user = user;
-   *   });
-   * </pre>
-   */
-  function current(forceUpdate) {
-    var url = currentUserPath,
-      cfg = angular.copy(configCurrentUser),
-      output;
-
-    if (forceUpdate) {
-      currentUser = null;
+    function clean(user) {
+      user = _.cloneDeep(user);
+      if (user.id) {
+        delete user.userName;
+      }
+      delete user.id;
+      delete user.self;
+      delete user.effectiveRoles;
+      return user;
     }
 
-    if (currentUser && !angular.isFunction(currentUser.then)) {
-      output = $q.when(currentUser);
-    } else {
-      output = currentUser = currentUser || $http.get(c8yBase.url(url), cfg).then(function (res) {
-        currentUser = res.data;
-        currentUser.tenant = getTenantFromSelf(currentUser.self);
-        return currentUser;
-      }, function () {
-        currentUser = null;
-        return $q.reject();
+    function buildUserUrl(user) {
+      var _id = user.id || user;
+      return buildUsersUrl().then(function (url) {
+        return url + '/' + encodeURIComponent(_id);
       });
     }
 
-    return output;
-  }
+    function buildCurrentUserUrl() {
+      return $q.when(c8yBase.url(currentUserPath));
+    }
 
-  /**
-   * @ngdoc function
-   * @name list
-   * @methodOf c8y.core.service:c8yUser
-   *
-   * @description
-   * Gets the list of users.
-   *
-   * @param {object} filter Filters object.
-   *
-   * @returns {promise} Returns promise with the list of users<!-- (see user object specification {@link http://docs.cumulocity.com/user@TODO here}).-->
-   *
-   * @example
-   * <pre>
-   *   c8yUser.list().then(function (users) {
-   *     $scope.users = users;
-   *   });
-   * </pre>
-   */
-  function list(filter) {
-    var _filter = c8yBase.pageSizeFilter(filter),
-      cfg = {
-        params: _filter
-      },
-      onList = c8yBase.cleanListCallback('users', list, _filter);
+    function buildUsersUrl() {
+      return current().then(function (user) {
+        return c8yBase.url(applyTenant(path, user.tenant));
+      });
+    }
 
-    return buildUsersUrl().then(function (url) {
-      return $http.get(url, cfg).then(onList);
-    });
-  }
+    function getTenantFromSelf(url) {
+      var FIND_TENANT = /\/user\/(\w+)\//,
+        match = url.match(FIND_TENANT);
 
-  /**
-   * @ngdoc function
-   * @name detail
-   * @methodOf c8y.core.service:c8yUser
-   *
-   * @description
-   * Gets the details of given user.
-   *
-   * @param {object|integer} user User object or user's id.
-   * @param {boolean} silentError Prevent from display c8yAlert when request reject.
-   *
-   * @returns {promise} Returns $http's promise with user object<!-- (see user object specification {@link http://docs.cumulocity.com/user@TODO here})-->.
-   *
-   * @example
-   * <pre>
-   *   var userId = 'admin';
-   *   c8yUser.detail(userId).then(function (res) {
-   *     $scope.user = res.data;
-   *   });
-   * </pre>
-   */
-  function detail(user, silentError) {
-    var cfg = {silentError: !!silentError};
-    return buildUserUrl(user).then(function (url) {
+      if (match.length < 2) {
+        throw(new Error('Cannot find tenant on user self URL'));
+      }
+      return match[1];
+    }
+
+    /**
+     * @ngdoc function
+     * @name current
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Gets user that is currently logged in.
+     *
+     * @param {bool} forceUpdate Forces refreshing current user data from server.
+     *
+     * @returns {promise} Returns promise with user object that contains user id, roles list, groups list and other user data.
+     *
+     * @example
+     * <pre>
+     *   c8yUser.current()
+     *     .then(function (currentUser) {
+     *       $scope.currentUser = currentUser;
+     *     });
+     * </pre>
+     */
+    function current(forceUpdate) {
+      var url = currentUserPath,
+        cfg = _.cloneDeep(configCurrentUser),
+        output;
+
+      if (forceUpdate) {
+        currentUser = null;
+      }
+
+      if (currentUser && !_.isFunction(currentUser.then)) {
+        output = $q.when(currentUser);
+      } else {
+        output = currentUser = currentUser || $http.get(c8yBase.url(url), cfg).then(function (res) {
+          currentUser = res.data;
+          currentUser.tenant = getTenantFromSelf(currentUser.self);
+          return currentUser;
+        }, function () {
+          currentUser = null;
+          return $q.reject();
+        });
+      }
+
+      return output;
+    }
+
+    /**
+     * @ngdoc function
+     * @name list
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Gets the list of users.
+     *
+     * @param {object} filter Filters object.
+     *
+     * @returns {promise} Returns promise with the list of users<!-- (see user object specification {@link http://docs.cumulocity.com/user@TODO here}).-->
+     *
+     * @example
+     * <pre>
+     *   c8yUser.list().then(function (users) {
+     *     $scope.users = users;
+     *   });
+     * </pre>
+     */
+    function list(filter) {
+      var _filter = c8yBase.pageSizeFilter(filter),
+        cfg = {
+          params: _filter
+        },
+        onList = c8yBase.cleanListCallback('users', list, _filter);
+
+      return buildUsersUrl().then(function (url) {
+        return $http.get(url, cfg).then(onList);
+      });
+    }
+
+    /**
+     * @ngdoc function
+     * @name detail
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Gets the details of given user.
+     *
+     * @param {object|integer} user User object or user's id.
+     * @param {boolean} silentError Prevent from display c8yAlert when request reject.
+     *
+     * @returns {promise} Returns $http's promise with user object<!-- (see user object specification {@link http://docs.cumulocity.com/user@TODO here})-->.
+     *
+     * @example
+     * <pre>
+     *   var userId = 'admin';
+     *   c8yUser.detail(userId).then(function (res) {
+     *     $scope.user = res.data;
+     *   });
+     * </pre>
+     */
+    function detail(user, silentError) {
+      var cfg = {silentError: !!silentError};
+      return buildUserUrl(user).then(function (url) {
+        return $http.get(url, cfg);
+      });
+    }
+
+    /**
+     * @ngdoc function
+     * @name detailCurrent
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Gets the details of current user.
+     *
+     * @returns {promise} Returns $http's promise with current user details object.
+     *
+     * @example
+     * <pre>
+     *   c8yUser.detailCurrent().then(function (res) {
+     *     $scope.currentUserDetails = res.data;
+     *   });
+     * </pre>
+     */
+    function detailCurrent() {
+      var url = c8yBase.url(currentUserPath),
+        cfg = _.cloneDeep(configCurrentUser);
       return $http.get(url, cfg);
-    });
-  }
+    }
 
-  /**
-   * @ngdoc function
-   * @name detailCurrent
-   * @methodOf c8y.core.service:c8yUser
-   *
-   * @description
-   * Gets the details of current user.
-   *
-   * @returns {promise} Returns $http's promise with current user details object.
-   *
-   * @example
-   * <pre>
-   *   c8yUser.detailCurrent().then(function (res) {
-   *     $scope.currentUserDetails = res.data;
-   *   });
-   * </pre>
-   */
-  function detailCurrent() {
-    var url = c8yBase.url(currentUserPath),
-      cfg = angular.copy(configCurrentUser);
-    return $http.get(url, cfg);
-  }
+    /**
+     * @ngdoc function
+     * @name remove
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Removes user.
+     *
+     * @param {object|integer} user User object or user's id.
+     *
+     * @returns {promise} Returns $http's promise.
+     *
+     * @example
+     * <pre>
+     *   var userId = 'test';
+     *   c8yUser.remove(userId);
+     * </pre>
+     */
+    function remove(user) {
+      return buildUserUrl(user).then(function (url) {
+        return $http['delete'](url);
+      });
+    }
 
-  /**
-   * @ngdoc function
-   * @name remove
-   * @methodOf c8y.core.service:c8yUser
-   *
-   * @description
-   * Removes user.
-   *
-   * @param {object|integer} user User object or user's id.
-   *
-   * @returns {promise} Returns $http's promise.
-   *
-   * @example
-   * <pre>
-   *   var userId = 'test';
-   *   c8yUser.remove(userId);
-   * </pre>
-   */
-  function remove(user) {
-    return buildUserUrl(user).then(function (url) {
-      return $http['delete'](url);
-    });
-  }
+    /**
+     * @ngdoc function
+     * @name create
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Creates a new user.
+     *
+     * @param {object} user User object.
+     *
+     * @returns {promise} Returns $http's promise.
+     *
+     * @example
+     * <pre>
+     *   var user = {
+     *     enabled: true,
+     *     devicePermissions: {},
+     *     applications: [{id: 6, type: 'HOSTED'}],
+     *     userName: 'test',
+     *     firstName: 'Test',
+     *     lastName: 'Test',
+     *     email: 'test@example.com',
+     *     phone: '543432321',
+     *     password: 'password',
+     *     passwordStrength: 'RED'
+     *   };
+     *   c8yUser.create(user);
+     * </pre>
+     */
+    function create(user) {
+      var data = clean(user),
+        cfg = _.cloneDeep(config);
+      return buildUsersUrl().then(function (url) {
+        return $http.post(url, data, cfg);
+      });
+    }
 
-  /**
-   * @ngdoc function
-   * @name create
-   * @methodOf c8y.core.service:c8yUser
-   *
-   * @description
-   * Creates a new user.
-   *
-   * @param {object} user User object.
-   *
-   * @returns {promise} Returns $http's promise.
-   *
-   * @example
-   * <pre>
-   *   var user = {
-   *     enabled: true,
-   *     devicePermissions: {},
-   *     applications: [{id: 6, type: 'HOSTED'}],
-   *     userName: 'test',
-   *     firstName: 'Test',
-   *     lastName: 'Test',
-   *     email: 'test@example.com',
-   *     phone: '543432321',
-   *     password: 'password',
-   *     passwordStrength: 'RED'
-   *   };
-   *   c8yUser.create(user);
-   * </pre>
-   */
-  function create(user) {
-    var data = clean(user),
-      cfg = angular.copy(config);
-    return buildUsersUrl().then(function (url) {
-      return $http.post(url, data, cfg);
-    });
-  }
+    /**
+     * @ngdoc function
+     * @name enable
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Enables user.
+     *
+     * @param {object} user User object or id.
+     *
+     * @returns {promise} Returns $http's promise.
+     *
+     * @example
+     * <pre>
+     *   var user = {
+     *     id: 5345
+     *   };
+     *   c8yUser.enable(user);
+     * </pre>
+     */
+    function enable(user) {
+      var userId = user.id || user;
+      return save({id: userId, enabled: true});
+    }
 
-  function update(user, isCurrent) {
-    var data = clean(user),
-      cfg = angular.copy(config),
-      url = isCurrent ? buildCurrentUserUrl() : buildUserUrl(user);
+    /**
+     * @ngdoc function
+     * @name disable
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Disables user.
+     *
+     * @param {object} user User object or id.
+     *
+     * @returns {promise} Returns $http's promise.
+     *
+     * @example
+     * <pre>
+     *   var user = {
+     *     id: 5345
+     *   };
+     *   c8yUser.disable(user);
+     * </pre>
+     */
+    function disable(user) {
+      var userId = user.id || user;
+      return save({id: userId, enabled: false});
+    }
+
+    function update(user, isCurrent) {
+      var data = clean(user);
+      var cfg = _.cloneDeep(config);
+      var url = isCurrent ? buildCurrentUserUrl() : buildUserUrl(user);
       return url.then(function(url) {
         return $http.put(url, data, cfg);
       });
-  }
+    }
 
-  function save(user) {
-    var action = user.id ? update(user) : create(user);
-    action.then(function() {
-      updateToken(user);
-    });
-    return action;
-  }
-
-  function saveCurrent(user) {
-    return update(user, true)
-      .then(function() {
+    /**
+     * @ngdoc function
+     * @name save
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Saves user data.
+     *
+     * @param {object} user User object to save.
+     *
+     * @returns {promise} Returns $http's promise with result.
+     *
+     * @example
+     * <pre>
+     *   var user = {
+     *     id: 'myuser',
+     *     email: 'test@example.com'
+     *   };
+     *   c8yUser.save(user)
+     *     .then(function () {
+     *       console.log('User saved!');
+     *     });
+     * </pre>
+     */
+    function save(user) {
+      var action = user.id ? update(user) : create(user);
+      action.then(function() {
         updateToken(user);
       });
-  }
-
-  function updateToken(user) {
-    checkIfCurrent(user).then(function(isCurrent) {
-      if(isCurrent) {
-        c8yAuth.updatePassword(getPassword(user));
-      }
-    });
-  }
-
-  function checkIfCurrent(user) {
-    var userId = user.id || user;
-    return current().then(function(currentUser) {
-      return $q.when(currentUser.id === userId);
-    });
-  }
-
-  function getPassword(user) {
-    var token = c8yAuth.decodeToken(info.token);
-    return user.password || token.password;
-  }
-
-  function isCurrentPassword(password) {
-    var token = c8yAuth.decodeToken(info.token);
-    return token.password === password;
-  }
-
-  function groups(user) {
-    var _groups = (user.groups && user.groups.references) || [];
-    return _groups.map(function (ref) {
-      return ref.group;
-    });
-  }
-
-  function isDeviceUser(user) {
-    return user.id.match(/^device_/);
-  }
-
-  /**
-   * @ngdoc function
-   * @name hasRole
-   * @methodOf c8y.core.service:c8yUser
-   *
-   * @description
-   * Checks if user has given role (either defined for him or for one of his groups).
-   *
-   * @param {object} user User object.
-   * @param {object} roleId Role's identification string.
-   *
-   * @returns {bool} Returns boolean value indicating if user has given role.
-   *
-   * @example
-   * <pre>
-   *   c8yUser.current().then(function (currentUser) {
-   *     $scope.canManageUsers = c8yUser.hasRole(currentUser, 'ROLE_USER_MANAGEMENT_ADMIN');
-   *   });
-   * </pre>
-   */
-  function hasRole(user, roleId) {
-    var result = hasRoleInUser(user, roleId);
-    if (!result) {
-      result = hasRoleInGroups(user, roleId);
+      return action;
     }
-    return result;
-  }
 
-  function hasRoleInUser(user, roleId) {
-    var result = false;
-    if (user.roles && user.roles.references) {
-      angular.forEach(user.roles.references, function (ref) {
-        if (ref.role.id === roleId) {
-          result = true;
+    function saveCurrent(user) {
+      return update(user, true)
+        .then(function() {
+          updateToken(user);
+        });
+    }
+
+    function updateToken(user) {
+      checkIfCurrent(user).then(function(isCurrent) {
+        if(isCurrent) {
+          c8yAuth.updatePassword(getPassword(user));
         }
       });
     }
-    return result;
-  }
 
-  function hasRoleInGroups(user, roleId) {
-    var result = false;
-    if (user.groups && user.groups.references) {
-      angular.forEach(user.groups.references, function (groupRef) {
-        angular.forEach(groupRef.group.roles.references, function (roleRef) {
-          if (roleRef.role.id === roleId) {
+    function checkIfCurrent(user) {
+      var userId = user.id || user;
+      return current().then(function(currentUser) {
+        return $q.when(currentUser.id === userId);
+      });
+    }
+
+    function getPassword(user) {
+      return user.password || c8yAuth.getPassword();
+    }
+
+    function isCurrentPassword(password) {
+      return c8yAuth.getPassword() === password;
+    }
+
+    function groups(user) {
+      var _groups = (user.groups && user.groups.references) || [];
+      return _groups.map(function (ref) {
+        return ref.group;
+      });
+    }
+
+    function isDeviceUser(user) {
+      return user.id.match(/^device_/);
+    }
+
+    /**
+     * @ngdoc function
+     * @name hasRole
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description
+     * Checks if user has given role (either defined for him or for one of his groups).
+     *
+     * @param {object} user User object.
+     * @param {object} roleId Role's identification string.
+     *
+     * @returns {bool} Returns boolean value indicating if user has given role.
+     *
+     * @example
+     * <pre>
+     *   c8yUser.current().then(function (currentUser) {
+     *     $scope.canManageUsers = c8yUser.hasRole(currentUser, 'ROLE_USER_MANAGEMENT_ADMIN');
+     *   });
+     * </pre>
+     */
+    function hasRole(user, roleId) {
+      var result = hasRoleInUser(user, roleId);
+      if (!result) {
+        result = hasRoleInGroups(user, roleId);
+      }
+      return result;
+    }
+
+    function hasRoleInUser(user, roleId) {
+      var result = false;
+      if (user.roles && user.roles.references) {
+        _.forEach(user.roles.references, function (ref) {
+          if (ref.role.id === roleId) {
             result = true;
           }
         });
+      }
+      return result;
+    }
+
+    function hasRoleInGroups(user, roleId) {
+      var result = false;
+      if (user.groups && user.groups.references) {
+        _.forEach(user.groups.references, function (groupRef) {
+          _.forEach(groupRef.group.roles.references, function (roleRef) {
+            if (roleRef.role.id === roleId) {
+              result = true;
+            }
+          });
+        });
+      }
+      return result;
+    }
+
+    function getDevicePermissions(user, deviceId) {
+      var _filter = c8yBase.pageSizeFilter({moId: deviceId});
+      var cfg = {
+        params: _filter
+      };
+
+      return buildUserUrl(user).then(function (url) {
+        return $http.get(url + '/devicePermissions', cfg);
       });
     }
-    return result;
-  }
 
-  function getDevicePermissions(user, deviceId) {
-    var _filter = c8yBase.pageSizeFilter({moId: deviceId}),
-    cfg = {
-      params: _filter
-    };
-
-    return buildUserUrl(user).then(function (url) {
-      return $http.get(url + '/devicePermissions', cfg);
-    });
-  }
-
-  function login(tenant, username, password, remember) {
-    return $q.when(getToken(tenant, username, password))
-      .then(_.partial(confirmToken, remember));
-  }
-
-  function logout() {
-    deleteToken();
-    currentUser = null;
-    info.token = null;
-  }
-
-  function getToken(tenant, username, password) {
-    return btoa(
-      (tenant ? tenant + '/' : '') +
-      username + ':' +
-      password
-    );
-  }
-
-  function confirmToken(remember, _token) {
-    info.token = _token;
-    return $http.get(c8yBase.url(currentUserPath), {
-      headers: getHeaders(_token)
-    }).then(function (res) {
-      info.token = _token;
-      setToken(_token, remember);
-      return res.data;
-    }, function () {
-      deleteToken();
-    });
-  }
-
-  function setToken(_token, remember) {
-    if (remember) {
-      window.localStorage.setItem(TOKEN, _token);
-    } else {
-      window.sessionStorage.setItem(TOKEN, _token);
+    function login(tenant, username, password, remember) {
+      var token = c8yAuth.encodeToken(username, password, tenant);
+      return c8yAuth.setAuthToken(token)
+        .then(_.partial(c8yAuth.saveAuthToken, remember));
     }
-  }
 
-  function deleteToken() {
-    window.localStorage.removeItem(TOKEN);
-    window.sessionStorage.removeItem(TOKEN);
-  }
+    function logout() {
+      return c8yAuth.logout();
+    }
 
-  function isAdmin(user) {
-    var admin = _.some(user.groups.references, function (ref) {
-      return ref.group.name === 'admins';
+    function isAdmin(user) {
+      var admin = _.some(user.groups.references, function (ref) {
+        return ref.group.name === 'admins';
+      });
+      return admin;
+    }
+
+    function getHeaders(token) {
+      var headers = c8yAuth.headers();
+      if (token) {
+        headers.Authorization = 'Basic ' + token;
+      }
+      return _.assign(headers, c8yBase.contentHeaders('user', true));
+    }
+
+    function isTfaActive(user) {
+      var newUser = _.isUndefined(user.id);
+
+      return newUser ?
+             isTfaAvailable() :
+             $q.when(user)
+              .then(function (userDetails) {
+                 var tfaActive = userDetails.twoFactorAuthenticationEnabled;
+
+                 return isTfaReadonly(user)
+                   .then(function (enforced) {
+
+                     if (enforced) {
+                       tfaActive = true;
+                     }
+
+                     return tfaActive;
+                   });
+               });
+    }
+
+    /*
+     * TFA feature is available if any of these following conditions is true:
+     * - Enabled in tenant options.
+     * - Enabled in system options.
+     * - TFA is enforced (either in tenant or group level).
+     */
+    function isTfaAvailable() {
+      var tfaEnabledOption = {
+        category: 'two-factor-authentication',
+        key: 'enabled'
+      };
+
+      return $q
+        .all([
+          c8ySettings.detailValue(tfaEnabledOption),
+          c8ySettings.getSystemOptionValue(tfaEnabledOption),
+          isTfaEnforced()
+        ])
+        .then(function (values) {
+          return _.reduce(values, function (available, value) {
+            return available || value;
+          }, false);
+        });
+    }
+
+    /*
+     * TFA is "readonly" when it is enforced (in either tenant or group level).
+     * After clarification from Wojciech: Enforced means enforced. Even user with
+     * admins role should not be able to change the TFA state when enforced.
+     */
+    function isTfaReadonly(user) {
+      return isTfaEnforced({ user: user });
+    }
+
+    function isTfaEnforced(options) {
+      var opts = options || {};
+      var user = opts.user;
+      var userPromise = user ? $q.when(user) : current();
+
+      return userPromise
+        .then(function (user) {
+          return $q
+            .all([
+              isTfaTenantEnforcedForUser(user),
+              isTfaGroupEnforcedForUser(user)
+            ])
+            .then(function (values) {
+              return Boolean(values[0] || values[1]);
+            });
+        });
+    }
+
+    function c8ySettings2TFAEnforced() {
+      if (!c8ySettings2TFAEnforced._calling) {
+        var calling = c8ySettings2TFAEnforced._calling = c8ySettings.getSystemOptionValue({
+          category: 'two-factor-authentication',
+          key: 'enforced'
+        });
+        calling.finally(function () {
+          c8ySettings2TFAEnforced._calling = undefined;
+        });
+      }
+      return c8ySettings2TFAEnforced._calling;
+    }
+
+    function c8ySettings2TFAEnforcedGroup() {
+      if (!c8ySettings2TFAEnforcedGroup._calling) {
+        var calling = c8ySettings2TFAEnforcedGroup._calling = c8ySettings.getSystemOptionValue({
+          category: 'two-factor-authentication',
+          key: 'enforced.group'
+        });
+        calling.finally(function () {
+          c8ySettings2TFAEnforcedGroup._calling = undefined;
+        });
+      }
+      return c8ySettings2TFAEnforcedGroup._calling;
+    }
+
+    function isTfaTenantEnforcedForUser(user) {
+      return c8ySettings2TFAEnforced()
+        .then(function (enforcedTfaTenantsCsv) {
+          var enforcedTfaTenants = [];
+
+          if (enforcedTfaTenantsCsv) {
+            enforcedTfaTenants = enforcedTfaTenantsCsv.split(',');
+          }
+
+          return _.some(enforcedTfaTenants, function (enforcedTfaTenant) {
+            return enforcedTfaTenant === user.tenant;
+          });
+        });
+    }
+
+    function isTfaGroupEnforcedForUser(user) {
+      return c8ySettings2TFAEnforcedGroup()
+        .then(function (enforcedTfaGroupName) {
+          return _.some(groups(user), function (userGroup) {
+            return userGroup.name === enforcedTfaGroupName;
+          });
+        });
+    }
+
+    /**
+     * @ngdoc function
+     * @name savePhoneNumber
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description Saves provided phone number for given user.
+     *
+     * @param {object} user User object
+     * @param {string} phoneNumber Phone number (international phone number format)
+     *
+     * @returns {promise} promise Returns $http promise
+     *
+     */
+    function savePhoneNumber(user, phoneNumber) {
+      var url = c8yBase.url('user/currentUserPhone'),
+        token = c8yAuth.encodeToken(user.name, user.password, user.tenant),
+        config = {
+          headers: getHeaders(token),
+          method: 'PUT',
+          url: url,
+          data: {
+            phone: phoneNumber
+          },
+          silentError: true
+        };
+      return $http(config);
+    }
+
+    /**
+     * @ngdoc function
+     * @name activateSupportUser
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description Activates support user access on behalf of the current user or on
+     * behalf of a supplied user.
+     *
+     * @param {object|string} user User reference
+     *
+     * @returns {promise} promise Returns a promise that resolves when the request is successful
+     *
+     */
+    function activateSupportUser(user) {
+      var promise = user ? $q.when(user) : current();
+      var METHOD = 'PUT';
+      var URL = c8yBase.url('tenant/support-user/enable');
+
+      return promise
+        .then(function () {
+          return $http({
+            method: METHOD,
+            url: URL
+          });
+        });
+    }
+
+    $rootScope.$on('authStateChange', function (evt, data) {
+      if (!data.hasAuth) {
+        currentUser = null;
+      }
     });
-    return admin;
-  }
 
-  function getHeaders(token) {
-    var t = token || info.token;
     return {
-      Authorization: 'Basic ' + t,
-      UseXBasic: true,
-      Accept: 'application/vnd.com.nsn.cumulocity.user+json;'
+      current: current,
+      checkIfCurrent: checkIfCurrent,
+      list: list,
+      detail: detail,
+      detailCurrent: detailCurrent,
+      remove: remove,
+      enable: enable,
+      disable: disable,
+      save: save,
+      saveCurrent: saveCurrent,
+      savePhoneNumber: savePhoneNumber,
+      groups: groups,
+      isDeviceUser: isDeviceUser,
+      hasRole: hasRole,
+      getDevicePermissions: getDevicePermissions,
+      login: login,
+      logout: logout,
+      isAdmin: isAdmin,
+      isCurrentPassword: isCurrentPassword,
+      isTfaAvailable: isTfaAvailable,
+      isTfaActive: isTfaActive,
+      isTfaReadonly: isTfaReadonly,
+      getHeaders: getHeaders,
+      activateSupportUser: activateSupportUser
     };
   }
-
-  return {
-    current: current,
-    checkIfCurrent: checkIfCurrent,
-    list: list,
-    detail: detail,
-    detailCurrent: detailCurrent,
-    remove: remove,
-    save: save,
-    saveCurrent: saveCurrent,
-    groups: groups,
-    isDeviceUser: isDeviceUser,
-    hasRole: hasRole,
-    getDevicePermissions: getDevicePermissions,
-    login: login,
-    logout: logout,
-    isAdmin: isAdmin,
-    isCurrentPassword: isCurrentPassword
-  };
-
-}]);
+}());

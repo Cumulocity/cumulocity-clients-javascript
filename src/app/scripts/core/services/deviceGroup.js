@@ -1,18 +1,19 @@
 /**
  * @ngdoc service
  * @name c8y.core.service:c8yDeviceGroup
- * @requires c8y.core.service:c8yManagedObject
+ * @requires c8y.core.service:c8yInventory
  *
  * @description
  * This service allows for managing device groups.
  */
 angular.module('c8y.core')
-  .factory('c8yDeviceGroup', ['c8yManagedObject',
-  function (c8yManagedObject) {
+  .factory('c8yDeviceGroup', ['c8yInventory',
+  function (c8yInventory) {
     'use strict';
 
     var exports = {},
-      deviceGroupType = 'c8y_DeviceGroup';
+      deviceGroupType = 'c8y_DeviceGroup',
+      deviceGroupFragmentType = 'c8y_IsDeviceGroup';
 
 
     function hasDevices (group) {
@@ -23,14 +24,14 @@ angular.module('c8y.core')
      * @ngdoc function
      * @name list
      * @methodOf c8y.core.service:c8yDeviceGroup
-     * 
+     *
      * @description
      * Gets the list of device groups.
-     * 
+     *
      * @param {object} filter Filters object.
-     * 
+     *
      * @returns {promise} Returns $http's promise with the list of device groups<!-- (see device group object specification {@link http://docs.cumulocity.com/deviceGroup@TODO here})-->.
-     * 
+     *
      * @example
      * <pre>
      *   c8yDeviceGroup.list().then(function (res) {
@@ -40,28 +41,28 @@ angular.module('c8y.core')
      */
     exports.list = function list(filter) {
       var _filter = {
-        type: deviceGroupType,
+        fragmentType: deviceGroupFragmentType,
         pageSize: 10000
       };
 
-      if (angular.isObject(filter)) {
-        _filter = angular.extend(_filter, filter);
+      if (_.isObjectLike(filter)) {
+        _filter = _.assign(_filter, filter);
       }
-      return c8yManagedObject.list(_filter);
+      return c8yInventory.list(_filter);
     };
 
     /**
      * @ngdoc function
      * @name detail
      * @methodOf c8y.core.service:c8yDeviceGroup
-     * 
+     *
      * @description
      * Gets details of a device group.
-     * 
+     *
      * @param {integer} id Device group's id.
-     * 
+     *
      * @returns {promise} Returns $http's promise.<!-- See response's `data` object specification {@link http://docs.cumulocity.com/deviceGroup@TODO here}.-->
-     * 
+     *
      * @example
      * <pre>
      *   var groupId = 1;
@@ -71,21 +72,21 @@ angular.module('c8y.core')
      * </pre>
      */
     exports.detail = function detail(id) {
-      return c8yManagedObject.detail(id);
+      return c8yInventory.detail(id);
     };
 
     /**
      * @ngdoc function
      * @name create
      * @methodOf c8y.core.service:c8yDeviceGroup
-     * 
+     *
      * @description
      * Creates a new device group.
-     * 
+     *
      * @param {object} data Device group object<!-- (see specification {@link http://docs.cumulocity.com/deviceGroup@TODO here})-->.
-     * 
+     *
      * @returns {promise} Returns $http's promise.
-     * 
+     *
      * @example
      * <pre>
      *   var group = {
@@ -98,21 +99,21 @@ angular.module('c8y.core')
      */
     exports.create = function create(data) {
       data.type = deviceGroupType;
-      return c8yManagedObject.create(data);
+      return c8yInventory.create(data);
     };
 
     /**
      * @ngdoc function
      * @name remove
      * @methodOf c8y.core.service:c8yDeviceGroup
-     * 
+     *
      * @description
      * Removes device group.
-     * 
+     *
      * @param {object} data Device group object<!-- (see specification {@link http://docs.cumulocity.com/deviceGroup@TODO here})-->.
-     * 
+     *
      * @returns {promise|boolean} Returns $http's promise or false if group has got devices.
-     * 
+     *
      * @example
      * <pre>
      *   var deviceGroupId = 1;
@@ -126,22 +127,22 @@ angular.module('c8y.core')
       if (hasDevices(data)) {
         return false;
       }
-      return c8yManagedObject.remove(data);
+      return c8yInventory.remove(data);
     };
 
     /**
      * @ngdoc function
      * @name addDevice
      * @methodOf c8y.core.service:c8yDeviceGroup
-     * 
+     *
      * @description
      * Adds a device to device group.
-     * 
+     *
      * @param {object} group Device group object<!-- (see specification {@link http://docs.cumulocity.com/deviceGroup@TODO here})-->.
      * @param {object} device Device object<!-- (see specification {@link http://docs.cumulocity.com/device@TODO here})-->.
-     * 
+     *
      * @returns {promise} Returns $http's promise.
-     * 
+     *
      * @example
      * <pre>
      *   var deviceGroupId = 1;
@@ -156,28 +157,28 @@ angular.module('c8y.core')
      * </pre>
      */
     exports.addDevice = function addDevice(group, device) {
-      device.c8y_Groups = angular.isArray(device.c8y_Groups) ? device.c8y_Groups : [];
+      device.c8y_Groups = _.isArray(device.c8y_Groups) ? device.c8y_Groups : [];
       device.c8y_Groups.push({
         name: group.name,
         id: group.id
       });
-      c8yManagedObject.update(device.id, {c8y_Groups: device.c8y_Groups});
-      return c8yManagedObject.addChildAsset(group, device);
+      c8yInventory.update(device.id, {c8y_Groups: device.c8y_Groups});
+      return c8yInventory.addChildAsset(group, device);
     };
 
     /**
      * @ngdoc function
      * @name removeDevice
      * @methodOf c8y.core.service:c8yDeviceGroup
-     * 
+     *
      * @description
      * Removes a device from device group.
-     * 
+     *
      * @param {object} group Device group object<!-- (see specification {@link http://docs.cumulocity.com/deviceGroup@TODO here})-->.
      * @param {object} device Device object<!-- (see specification {@link http://docs.cumulocity.com/device@TODO here})-->.
-     * 
+     *
      * @returns {promise} Returns $http's promise.
-     * 
+     *
      * @example
      * <pre>
      *   var deviceGroupId = 1;
@@ -186,7 +187,7 @@ angular.module('c8y.core')
      *     var deviceGroup = res.data;
      *     c8yDevices.detail(deviceId).then(function (res) {
      *       var device = res.data;
-     *       c8yDeviceGroup.removeDevice(device);
+     *       c8yDeviceGroup.removeDevice(deviceGroup, device);
      *     });
      *   });
      * </pre>
@@ -195,8 +196,8 @@ angular.module('c8y.core')
       device.c8y_Groups = device.c8y_Groups.filter(function (g) {
         return g.id !== group.id;
       });
-      c8yManagedObject.update(device.id, {c8y_Groups: device.c8y_Groups});
-      return c8yManagedObject.removeChildAsset(group, device);
+      c8yInventory.update(device.id, {c8y_Groups: device.c8y_Groups});
+      return c8yInventory.removeChildAsset(group, device);
     };
 
     return exports;

@@ -13,7 +13,7 @@ angular.module('c8y.core')
             defaultModule;
 
     function clean(statement) {
-      statement = angular.copy(statement);
+      statement = _.cloneDeep(statement);
       delete statement.id;
       delete statement.module;
       return statement;
@@ -123,7 +123,7 @@ angular.module('c8y.core')
     ];
 
     function toId(id) {
-      return angular.isObject(id) ? id.id : id;
+      return _.isObjectLike(id) ? id.id : id;
     }
 
     function buildStatementUrl(id) {

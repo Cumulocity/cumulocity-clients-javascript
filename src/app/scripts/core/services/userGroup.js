@@ -47,7 +47,7 @@ function ($http, $q, c8yBase, c8yUser) {
 
   function buildGroupUsersUrl(group, user) {
     return buildGroupUrl(group).then(function (url) {
-      return url + '/users' + (user ? ('/' + (user.id || user)) : '');
+      return url + '/users' + (user ? ('/' + (encodeURIComponent(user.id || user))) : '');
     });
   }
 
@@ -68,14 +68,14 @@ function ($http, $q, c8yBase, c8yUser) {
    * @ngdoc function
    * @name list
    * @methodOf c8y.core.service:c8yUserGroup
-   * 
+   *
    * @description
    * Gets the list of user groups.
-   * 
+   *
    * @param {object} filter Filters object.
-   * 
+   *
    * @returns {promise} Returns $http's promise with the list of user groups<!-- (see user group object specification {@link http://docs.cumulocity.com/userGroup@TODO here})-->.
-   * 
+   *
    * @example
    * <pre>
    *   c8yUserGroup.list().then(function (userGroups) {
@@ -99,14 +99,14 @@ function ($http, $q, c8yBase, c8yUser) {
    * @ngdoc function
    * @name detail
    * @methodOf c8y.core.service:c8yUserGroup
-   * 
+   *
    * @description
    * Gets the details of given user group.
-   * 
+   *
    * @param {integer|object} user User group's id or user group object.
-   * 
+   *
    * @returns {promise} Returns $http's promise with user group object<!-- (see user group object specification {@link http://docs.cumulocity.com/user@TODO here})-->.
-   * 
+   *
    * @example
    * <pre>
    *   var userGroupId = 1;
@@ -125,14 +125,14 @@ function ($http, $q, c8yBase, c8yUser) {
    * @ngdoc function
    * @name remove
    * @methodOf c8y.core.service:c8yUserGroup
-   * 
+   *
    * @description
    * Removes user group.
-   * 
+   *
    * @param {integer|object} user User group's id or user group object.
-   * 
+   *
    * @returns {promise} Returns $http's promise.
-   * 
+   *
    * @example
    * <pre>
    *   var userGroupId = 1;
@@ -149,14 +149,14 @@ function ($http, $q, c8yBase, c8yUser) {
    * @ngdoc function
    * @name update
    * @methodOf c8y.core.service:c8yUserGroup
-   * 
+   *
    * @description
    * Updates user group data.
-   * 
+   *
    * @param {object} group User group object<!-- (see object specification {@link http://docs.cumulocity.com/userGroup@TODO here})-->.
-   * 
+   *
    * @returns {promise} Returns promise with the saved user group object.
-   * 
+   *
    * @example
    * <pre>
    *   var userGroupId = 1;
@@ -182,14 +182,14 @@ function ($http, $q, c8yBase, c8yUser) {
    * @ngdoc function
    * @name create
    * @methodOf c8y.core.service:c8yUserGroup
-   * 
+   *
    * @description
    * Creates a new user group.
-   * 
+   *
    * @param {object} group User group object<!-- (see object specification {@link http://docs.cumulocity.com/userGroup@TODO here})-->.
-   * 
+   *
    * @returns {promise} Returns a promise with the details of newly created user group.
-   * 
+   *
    * @example
    * <pre>
    *   var userGroup = {
@@ -218,14 +218,14 @@ function ($http, $q, c8yBase, c8yUser) {
    * @ngdoc function
    * @name save
    * @methodOf c8y.core.service:c8yUserGroup
-   * 
+   *
    * @description
    * Saves user group object by either creating new one or updating existing one.
-   * 
+   *
    * @param {object} group User group object<!-- (see object specification {@link http://docs.cumulocity.com/userGroup@TODO here})-->.
-   * 
+   *
    * @returns {promise} Returns the result of either {@link c8y.core.service:c8yUserGroup#functions_create c8yUserGroup.create} or {@link c8y.core.service:c8yUserGroup#functions_create c8yUserGroup.create} depending on whether user group already existed.
-   * 
+   *
    * @example
    * <pre>
    *   var userGroup = {
@@ -242,14 +242,14 @@ function ($http, $q, c8yBase, c8yUser) {
    * @ngdoc function
    * @name listRoles
    * @methodOf c8y.core.service:c8yUserGroup
-   * 
+   *
    * @description
    * Gets the list of user group roles.
-   * 
+   *
    * @param {object} filters Filters object.
-   * 
+   *
    * @returns {promise} Returns promise with the list of roles<!-- (see specification {@link http://docs.cumulocity.com/userGroupRoles@TODO here})-->.
-   * 
+   *
    * @example
    * <pre>
    *   c8yUserGroup.listRoles().then(function (roles) {
@@ -397,7 +397,7 @@ function ($http, $q, c8yBase, c8yUser) {
   // }
 
   // function cleanRole(role) {
-  //   role = angular.copy(role);
+  //   role = _.cloneDeep(role);
   //   delete role.selected;
   //   delete role.highLight;
   //   return role;
@@ -407,8 +407,8 @@ function ($http, $q, c8yBase, c8yUser) {
   //   var _params = {
   //     pageSize: c8yBase.PAGESIZE
   //   };
-  //   if (angular.isObject(filter)) {
-  //     _params = angular.extend(_params, filter);
+  //   if (_.isObjectLike(filter)) {
+  //     _params = _.assign(_params, filter);
   //   }
   //   return $http.get(buildGroupsUrl(), {params: _params}, config(groupsType));
   // };
