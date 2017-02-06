@@ -10,7 +10,8 @@ module.exports = function (grunt) {
 
   grunt.config('uglify.minify', {
     options: {
-      sourceMap: true
+      sourceMap: true,
+      mangle: false
     },
     files: [{
       dest:  'build/main.js',
