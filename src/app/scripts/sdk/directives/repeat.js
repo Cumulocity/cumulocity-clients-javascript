@@ -1,5 +1,5 @@
 (function () {
-  angular.module('c8y.sdk').directive('c8yRepeat', [
+  angular.module('c8y.sdk').directive('c8yRepeatt', [
     '$injector',
     '$compile',
     '$rootScope',
@@ -7,27 +7,30 @@
   ]);
 
   function c8yRepeat(
-    $injector,
-    $compile,
-    $rootScope
+      $injector,
+      $compile,
+      $rootScope
   ) {
-    function link(scope, elem, attrs) {
+    function link(scope, _elem, attrs) {
       var serviceName, ngRepeatLink, parentScope;
+      var elem = $cloned;
 
       function replaceWithNgRepeat() {
         var regex = /^\s*([^\s]+)\s*in\s*([^\s]+)\s*/;
-        var matches = regex.exec(attrs.c8yRepeat);
+        var matches = regex.exec(attrs.c8yRepeatt);
         var varName = matches[1];
         serviceName = matches[2];
 
-        elem.removeAttr('c8y-repeat');
-        elem.removeAttr('data-c8y-repeat');
+        elem.removeAttr('c8y-repeatt');
+        elem.removeAttr('data-c8y-repeatt');
         elem.attr(
-          'ng-repeat', varName + ' in __c8y_serviceResult track by ' +
-          varName + '.id'
+            'ng-repeat', varName + ' in __c8y_serviceResult track by ' +
+            varName + '.id'
         );
 
         ngRepeatLink = $compile(elem);
+        $(_elem).replaceWith(elem);
+
       }
 
       function assignRefreshFunction() {
@@ -66,10 +69,13 @@
       replaceWithNgRepeat();
       init();
     }
-
+    var $cloned;
     return {
       restrict: 'A',
-      link: link,
+      compile: function(element) {
+        $cloned = $(element).clone();
+        return link;
+      },
       transclude: false,
       scope: {
         filter: '=?',
