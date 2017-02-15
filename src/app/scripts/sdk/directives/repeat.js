@@ -1,5 +1,5 @@
 (function () {
-  angular.module('c8y.sdk').directive('c8yRepeatt', [
+  angular.module('c8y.sdk').directive('c8yRepeat', [
     '$injector',
     '$compile',
     '$rootScope',
@@ -17,12 +17,12 @@
 
       function replaceWithNgRepeat() {
         var regex = /^\s*([^\s]+)\s*in\s*([^\s]+)\s*/;
-        var matches = regex.exec(attrs.c8yRepeatt);
+        var matches = regex.exec(attrs.c8yRepeat);
         var varName = matches[1];
         serviceName = matches[2];
 
-        elem.removeAttr('c8y-repeatt');
-        elem.removeAttr('data-c8y-repeatt');
+        elem.removeAttr('c8y-repeat');
+        elem.removeAttr('data-c8y-repeat');
         elem.attr(
             'ng-repeat', varName + ' in __c8y_serviceResult track by ' +
             varName + '.id'
