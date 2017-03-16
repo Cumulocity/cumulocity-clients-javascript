@@ -11,70 +11,71 @@
       $compile,
       $rootScope
   ) {
-    function link(scope, _elem, attrs) {
-      var serviceName, ngRepeatLink, parentScope;
-      var elem = $cloned;
+    function createLink(clonedElement) {
+      return function (scope, _elem, attrs) {
+        var elem = clonedElement;
+        var serviceName;
+        var ngRepeatLink;
+        var parentScope;
 
-      function replaceWithNgRepeat() {
-        var regex = /^\s*([^\s]+)\s*in\s*([^\s]+)\s*/;
-        var matches = regex.exec(attrs.c8yRepeat);
-        var varName = matches[1];
-        serviceName = matches[2];
+        replaceWithNgRepeat();
+        init();
 
-        elem.removeAttr('c8y-repeat');
-        elem.removeAttr('data-c8y-repeat');
-        elem.attr(
-            'ng-repeat', varName + ' in __c8y_serviceResult track by ' +
-            varName + '.id'
-        );
+        function replaceWithNgRepeat() {
+          var regex = /^\s*([^\s]+)\s*in\s*([^\s]+)\s*/;
+          var matches = regex.exec(attrs.c8yRepeat);
+          var varName = matches[1];
+          serviceName = matches[2];
 
-        ngRepeatLink = $compile(elem);
-        $(_elem).replaceWith(elem);
+          elem.removeAttr('c8y-repeat');
+          elem.removeAttr('data-c8y-repeat');
+          elem.attr(
+              'ng-repeat', varName + ' in __c8y_serviceResult track by ' +
+              varName + '.id'
+          );
 
-      }
-
-      function assignRefreshFunction() {
-        scope.refresh = fetchResults;
-      }
-
-      function fetchResults() {
-        if ($rootScope.c8y && $rootScope.c8y.user) {
-          callService().then(function (result) {
-            parentScope.__c8y_serviceResult = result;
-          });
+          ngRepeatLink = $compile(elem);
+          $(_elem).replaceWith(elem);
         }
-      }
 
-      function callService() {
-        var filter = scope.filter || {};
-        return $injector.get('c8y' + capitalize(serviceName)).list(filter);
-      }
+        function assignRefreshFunction() {
+          scope.refresh = fetchResults;
+        }
 
-      function capitalize(s) {
-        return s[0].toUpperCase() + s.slice(1);
-      }
+        function fetchResults() {
+          if ($rootScope.c8y && $rootScope.c8y.user) {
+            callService().then(function (result) {
+              parentScope.__c8y_serviceResult = result;
+            });
+          }
+        }
 
-      function init() {
-        parentScope = scope.$parent;
-        ngRepeatLink(parentScope);
-        assignRefreshFunction();
+        function callService() {
+          var filter = scope.filter || {};
+          return $injector.get('c8y' + capitalize(serviceName)).list(filter);
+        }
 
-        $rootScope.$on('c8y.api.login', function () {
-          fetchResults();
-        });
+        function capitalize(s) {
+          return s[0].toUpperCase() + s.slice(1);
+        }
 
-        scope.$watch('filter', fetchResults, true);
-      }
+        function init() {
+          parentScope = scope.$parent;
+          ngRepeatLink(parentScope);
+          assignRefreshFunction();
 
-      replaceWithNgRepeat();
-      init();
+          $rootScope.$on('c8y.api.login', function () {
+            fetchResults();
+          });
+          scope.$watch('filter', fetchResults, true);
+        }
+      };
     }
-    var $cloned;
+
     return {
       restrict: 'A',
-      compile: function(element) {
-        $cloned = $(element).clone();
-        return link;
+      compile: function (element) {
+        return createLink($(element).clone());
       },
       transclude: false,
       scope: {
