@@ -14,7 +14,6 @@
     "app/scripts/core/services/counter.js",
     "app/scripts/core/services/deviceBulkControl.js",
     "app/scripts/core/services/deviceControl.js",
-    "app/scripts/core/services/events.js",
     "app/scripts/core/services/deviceGroup.js",
     "app/scripts/core/services/deviceRegistration.js",
     "app/scripts/core/services/devices.js",
