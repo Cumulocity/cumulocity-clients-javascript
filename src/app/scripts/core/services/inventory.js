@@ -9,14 +9,14 @@
  * This service allows for managing managed objects inventory.
  */
 angular.module('c8y.core')
-.factory('c8yInventory', ['$http', '$q', 'c8yBase', 'c8yRealtime',
-function ($http, $q, c8yBase, c8yRealtime) {
+.factory('c8yInventory', ['$http', '$q', 'c8yBase', 'c8yRealtime', 'c8yQueriesUtil',
+function ($http, $q, c8yBase, c8yRealtime, c8yQueriesUtil) {
   'use strict';
 
   var path = 'inventory/managedObjects',
     moIdLocationRegExp = '\\/inventory\\/managedObjects\\/(\\d+)',
     defaultConfig = {
-      headers: c8yBase.contentHeaders('managedObject')
+      headers: c8yBase.contentHeaders('managedObject', 'managedObject')
     },
     defaultConfigReference = {
       headers: c8yBase.contentHeaders('managedObjectReference')
@@ -47,11 +47,11 @@ function ($http, $q, c8yBase, c8yRealtime) {
 
   function cleanFilters(filters) {
     var _filters = filters || {},
-      allowedWithText= ['text', 'pageSize', 'currentPage', 'skipChildrenNames'];
+      allowedWithText= ['text', 'pageSize', 'currentPage', 'skipChildrenNames', 'fragmentType', 'q'];
 
     //text parameters can only be used with some parameters
     if (_filters.text) {
-      Object.keys(_filters).forEach(function (key) {
+      _.keys(_filters).forEach(function (key) {
         if (allowedWithText.indexOf(key) === -1) {
           delete _filters[key];
         }
@@ -98,7 +98,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
    *   var filters = {fragmentType: 'c8y_IsDevice', withParents: true};
    *   c8yInventory.list(filters).then(function (devices) {
    *     $scope.devices = [];
-   *     angular.forEach(devices, function(device) {
+   *     _.forEach(devices, function(device) {
    *       $scope.devices.push(device);
    *     });
    *   });
@@ -114,6 +114,76 @@ function ($http, $q, c8yBase, c8yRealtime) {
       onList = c8yBase.cleanListCallback('managedObjects', list, _filters, blindPaging);
 
     return $http.get(url, cfg).then(onList);
+  }
+
+  /**
+   * @ngdoc function
+   * @name listQuery
+   * @methodOf c8y.core.service:c8yInventory
+   *
+   * @description
+   * Gets the list of managed object filtered and sorted by given query.
+   *
+   * @param {object} query Object defining filtering and sorting for managed objects to get.
+   * @param {object} params Additional request parameters.
+   *
+   * @returns {array} Returns the list of filtered managed objects. Each managed object has at least the following common properties:
+   *
+   * - **id** - `integer` - Managed object's id.
+   * - **name** - `string` - Managed object's name (optional).
+   * - **lastUpdated** - `string` - Date and time when managed object was last updated.
+   * - **owner** - `string` - Managed object's owner's username.
+   * - **self** - `string` - Managed object's self URL.
+   * - **type** - `string` - Managed object's type.
+   * - **assetParents** - `object` - Object containing references to managed object's parent assets.
+   * - **childAssets** - `object` - Object containing references to managed object's child assets.
+   * - **childDevices** - `object` - Object containing references to managed object's child devices.
+   * - **deviceParents** - `object` - Object containing references to managed object's parent devices.
+   *
+   * @example
+   * <pre>
+   *   var query = {
+   *     __filter: {
+   *       'name': 'My Device*',
+   *       'c8y_Availability.status': {
+   *         __in: ['AVAILABLE', 'UNAVAILABLE']
+   *       },
+   *       'creationTime': {
+   *         __lt: '2015-11-30T13:28:123Z'
+   *       },
+   *       'c8y_ActiveAlarmsStatus.critical': {
+   *         __gt: 0
+   *       },
+   *       __or: [
+   *         {__not: {__has: 'c8y_ActiveAlarmsStatus.major'}},
+   *         {
+   *           __or: [
+   *             {__bygroupid: 10300},
+   *             {__bygroupid: 10400}
+   *           ]
+   *         }
+   *       ]
+   *     },
+   *     __orderby: [
+   *       {'name': 1},
+   *       {'creationTime': -1},
+   *       {'c8y_ActiveAlarmsStatus.critical': -1}
+   *     ]
+   *   };
+   *   c8yInventory.listQuery(query).then(function (devices) {
+   *     $scope.devices = [];
+   *     _.forEach(devices, function(device) {
+   *       $scope.devices.push(device);
+   *     });
+   *   });
+   * </pre>
+   */
+  function listQuery(query, params) {
+    var _params = _.assign(
+      c8yBase.pageSizeFilter(params),
+      {q: c8yQueriesUtil.buildQuery(query)}
+    );
+    return list(_params);
   }
 
   /**
@@ -147,7 +217,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
   function detailCached(id) {
     return detail(id);
   }
-  
+
   /**
    * @ngdoc function
    * @name detailRealtime
@@ -172,7 +242,10 @@ function ($http, $q, c8yBase, c8yRealtime) {
   function detailRealtime(mo, scope) {
     var moRT,
       moId = mo.id || mo,
-      scopeId = scope.$id,
+      moDetails = _.isObjectLike(mo) ?
+        $q.when(mo) :
+        detail(moId).then(c8yBase.getResData),
+      scopeId,
       channel = '/managedobjects/' + moId,
       op = c8yRealtime.realtimeActions().UPDATE;
 
@@ -184,22 +257,56 @@ function ($http, $q, c8yBase, c8yRealtime) {
       if (!moRT) {
         moRT = _mo;
       } else {
-        angular.extend(moRT, _mo);
+        _.assign(moRT, _mo);
       }
+      _.forEach(moRT, function (val, key) {
+        if (_mo[key] === undefined) {
+          delete moRT[key];
+        }
+      });
     }
 
-    c8yRealtime.addListener(scopeId, channel, op, updateListener);
-    c8yRealtime.start(scopeId, channel);
-    scope.$on('stopRealtime', function () {
-      c8yRealtime.stop(scopeId, channel);
-    });
-    scope.$on('$destroy', function () {
-      c8yRealtime.stop(scopeId, channel);
-    });
-    return detail(moId).then(function (res) {
-      mergeMoRT(res.data);
-      return moRT;
-    });
+    if (scope) {
+      scopeId = scope.$id;
+      c8yRealtime.addListener(scopeId, channel, op, updateListener);
+      c8yRealtime.start(scopeId, channel);
+      scope.$on('stopRealtime', function () {
+        c8yRealtime.stop(scopeId, channel);
+      });
+      scope.$on('$destroy', function () {
+        c8yRealtime.stop(scopeId, channel);
+      });
+      return moDetails.then(function (moData) {
+        mergeMoRT(moData);
+        return moRT;
+      });
+    } else {
+      var output = {};
+      var promise = detail(moId)
+        .then(function (val) {
+          if (val.data) {
+            _.merge(output, val.data || {});
+          }
+          return output;
+        });
+
+      var rt_cfg = {
+        ops: op,
+        channel: channel,
+        onUpdate: function (e, data) {
+          _.merge(output, data);
+          _.forEach(output, function (val, key) {
+            if (data[key] === undefined) {
+              delete output[key];
+            }
+          });
+        }
+      };
+      var rt_obj = c8yRealtime.watch(rt_cfg);
+      promise.stop = _.bind(rt_obj.stop, rt_obj);
+
+      return promise;
+    }
   }
 
   /**
@@ -211,18 +318,23 @@ function ($http, $q, c8yBase, c8yRealtime) {
    * Removes managed object from inventory.
    *
    * @param {integer|object} mo Managed object's id or object.
+   * @param {object} params (Optional) Query parameters. Supported params are:
+   * - cascade: Cascade deletion for groups/assets and devices.
    *
    * @returns {promise} Returns $http's promise with response from server.
    *
    * @example
    * <pre>
    *   var moId = 1;
-   *   c8yInventory.remove(moId);
+   *   c8yInventory.remove(moId, {cascade: true});
    * </pre>
    */
-  function remove(mo) {
+  function remove(mo, params) {
     var url = buildDetailUrl(mo);
-    return $http['delete'](url);
+    if (!url) {
+      throw new Error('No managed object id provided!');
+    }
+    return $http.delete(url, {params: _.isObjectLike(params) ? params : {}});
   }
 
   /**
@@ -248,7 +360,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
    */
   function create(mo) {
     var url = c8yBase.url(path),
-      cfg = angular.copy(defaultConfig),
+      cfg = _.cloneDeep(defaultConfig),
       data = c8yBase.cleanFields(mo, fieldsToClean);
     return $http.post(url, data, cfg);
   }
@@ -309,7 +421,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
    */
   function update(mo) {
     var url = buildDetailUrl(mo),
-      cfg = angular.copy(defaultConfig),
+      cfg = _.cloneDeep(defaultConfig),
       data = c8yBase.cleanFields(mo, fieldsToClean);
     removeCache(mo);
     return $http.put(url,data, cfg);
@@ -393,6 +505,98 @@ function ($http, $q, c8yBase, c8yRealtime) {
 
   /**
    * @ngdoc function
+   * @name hasChildAssets
+   * @methodOf c8y.core.service:c8yInventory
+   *
+   * @description
+   * Checks if given managed object has child assets.
+   *
+   * @param {object} mo Managed object.
+   *
+   * @returns {bool} Returns true if MO has child assets.
+   *
+   * @example
+   * <pre>
+   *   $scope.hasChildAssets = c8yInventory.hasChildAssets(mo);
+   * </pre>
+   */
+  function hasChildAssets(mo) {
+    return hasChildren(mo, 'childAssets');
+  }
+
+  /**
+   * @ngdoc function
+   * @name hasChildDevices
+   * @methodOf c8y.core.service:c8yInventory
+   *
+   * @description
+   * Checks if given managed object has child devices.
+   *
+   * @param {object} mo Managed object.
+   *
+   * @returns {bool} Returns true if MO has child devices.
+   *
+   * @example
+   * <pre>
+   *   $scope.hasChildDevices = c8yInventory.hasChildDevices(mo);
+   * </pre>
+   */
+  function hasChildDevices(mo) {
+    return hasChildren(mo, 'childDevices');
+  }
+
+  function hasChildren(mo, childType) {
+    return !!getChildrenCount(mo, childType);
+  }
+
+  /**
+   * @ngdoc function
+   * @name getChildAssetsCount
+   * @methodOf c8y.core.service:c8yInventory
+   *
+   * @description
+   * Gets the number of child assets for given managed object.
+   *
+   * @param {object} mo Managed object.
+   *
+   * @returns {int} Returns the number of child assets.
+   *
+   * @example
+   * <pre>
+   *   $scope.count = c8yInventory.getChildAssetsCount(mo);
+   * </pre>
+   */
+  function getChildAssetsCount(mo) {
+    return getChildrenCount(mo, 'childAssets');
+  }
+
+  /**
+   * @ngdoc function
+   * @name hasChildDevicesCount
+   * @methodOf c8y.core.service:c8yInventory
+   *
+   * @description
+   * Gets the number of child devices for given managed object.
+   *
+   * @param {object} mo Managed object.
+   *
+   * @returns {int} Returns the number of child devices.
+   *
+   * @example
+   * <pre>
+   *   $scope.count = c8yInventory.getChildDevicesCount(mo);
+   * </pre>
+   */
+  function getChildDevicesCount(mo) {
+    return getChildrenCount(mo, 'childDevices');
+  }
+
+  function getChildrenCount(mo, childType) {
+    return mo && mo[childType].references.length;
+  }
+
+  /**
+   * @ngdoc function
    * @name childAssets
    * @methodOf c8y.core.service:c8yInventory
    *
@@ -419,7 +623,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
   function addChild(mo, moChild, type) {
     var url = buildChildrenUrl(mo, type),
       data = {managedObject: moChild},
-      cfg = angular.copy(defaultConfigReference);
+      cfg = _.cloneDeep(defaultConfigReference);
 
     return $http.post(url, data, cfg);
   }
@@ -443,8 +647,8 @@ function ($http, $q, c8yBase, c8yRealtime) {
           if (moType || moFragmentType) {
             out = out.then(function (mos) {
               return mos.filter(function (mo) {
-                return ((moType && mo.type === moType)
-                       || (moFragmentType && angular.isDefined(mo[moFragmentType])));
+                return ((moType && mo.type === moType) ||
+                  (moFragmentType && !_.isUndefined(mo[moFragmentType])));
               });
             });
           }
@@ -567,16 +771,15 @@ function ($http, $q, c8yBase, c8yRealtime) {
   }
 
   function directParents(mo, parentType, moType, moFragmentType) {
-    var parents,
-      childIdParamName = 'child' + parentType.charAt(0).toUpperCase() + parentType.slice(1) + 'Id',
+    var childIdParamName = 'child' + parentType.charAt(0).toUpperCase() + parentType.slice(1) + 'Id',
       filters = {
         withParents: true
       };
-    filters[childIdParamName] = mo.id;
+    filters[childIdParamName] = mo.id || mo;
     return list(filters).then(function (parents) {
       if (moType || moFragmentType) {
         parents = parents.filter(function (p) {
-          return ((moType && p.type === moType) || (moFragmentType && angular.isDefined(p[moFragmentType])));
+          return ((moType && p.type === moType) || (moFragmentType && !_.isUndefined(p[moFragmentType])));
         });
       }
       return parents;
@@ -766,8 +969,58 @@ function ($http, $q, c8yBase, c8yRealtime) {
   function supportsMeasurement(mo, measurementType) {
     var supports;
     getSupportedMeasurements(mo).then(function (measurements) {
-      supports = (angular.isArray(measurements) && (measurements.indexOf(measurementType) > -1));
+      supports = (_.isArray(measurements) && (measurements.indexOf(measurementType) > -1));
       return !!supports;
+    });
+  }
+
+  function _getSupportedSeries(mo) {
+    var url = buildDetailUrl(mo) + '/supportedSeries';
+    return $http.get(url).then(function (res) {
+      return res.data.c8y_SupportedSeries;
+    });
+  }
+
+  /**
+   * @ngdoc function
+   * @name getSupportedSeries
+   * @methodOf c8y.core.service:c8yInventory
+   *
+   * @description
+   * Gets the list of series supported by managed object.
+   *
+   * @param {integer|object} mo Managed object's id or object.
+   *
+   * @returns {promise} Returns promise with the array of supported series (object with fragment and series names).
+   *
+   * @example
+   * <pre>
+   *   var moId = 1;
+   *   c8yInventory.getSupportedSeries(moId).then(function (supportedSeries) {
+   *     $scope.supportedSeries = supportedSeries;
+   *   });
+   * </pre>
+   */
+  function getSupportedSeries(mo) {
+    return $q.all([
+      getSupportedMeasurements(mo),
+      _getSupportedSeries(mo)
+    ]).then(function (results) {
+      var supportedMeasurements = _.sortBy(results[0], 'length').reverse();
+      var supportedSeries = results[1];
+      return _(supportedSeries)
+        .map(function (s) {
+          var fragment = _.find(supportedMeasurements, function (m) {
+            return s.indexOf(m) === 0;
+          });
+          var series = s.replace(fragment + '.', '');
+          return {
+            fragment: fragment,
+            series: series
+          };
+        })
+        .filter(_.identity)
+        .value();
     });
   }
 
@@ -796,7 +1049,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
    * </pre>
    */
   function getFragments(mo){
-    return Object.keys(c8yBase.cleanFields(mo, _.union(fieldsToClean,['id','type','name','owner','self'])));
+    return _.keys(c8yBase.cleanFields(mo, _.union(fieldsToClean,['id','type','name','owner','self'])));
   }
 
   /**
@@ -823,6 +1076,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
 
   return {
     list: list,
+    listQuery: listQuery,
     detail: detail,
     detailCached: _detailCached,
     detailRealtime: detailRealtime,
@@ -831,6 +1085,10 @@ function ($http, $q, c8yBase, c8yRealtime) {
     update: update,
     save: save,
     remove: remove,
+    hasChildAssets: hasChildAssets,
+    hasChildDevices: hasChildDevices,
+    getChildAssetsCount: getChildAssetsCount,
+    getChildDevicesCount: getChildDevicesCount,
     childAssets: childAssets,
     childDevices: childDevices,
     addChildAsset: addChildAsset,
@@ -844,6 +1102,7 @@ function ($http, $q, c8yBase, c8yRealtime) {
     getCount: getCount,
     getSupportedMeasurements: getSupportedMeasurements,
     supportsMeasurement: supportsMeasurement,
+    getSupportedSeries: getSupportedSeries,
     getFragments: getFragments
   };
 

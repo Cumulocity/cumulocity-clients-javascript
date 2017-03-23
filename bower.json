@@ -16,12 +16,13 @@
   "license": "MIT",
   "homepage": "http://www.cumulocity.com",
   "dependencies": {
-    "lodash": "2.4.1",
-    "jquery": "2.1.1",
-    "moment": "2.8.3",
-    "angular": "1.2.20",
+    "lodash": "4.16.2",
+    "jquery": "3.1.1",
+    "moment": "2.15.1",
+    "angular": "1.5.8",
     "ng-file-upload": "1.6.12",
-    "cometd-jquery": "2.7.0"
+    "cometd-jquery": "3.0.0",
+    "angular-gettext": "2.3.8"
   },
   "ignore": [
     "**/.*",

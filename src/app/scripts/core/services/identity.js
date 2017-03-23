@@ -35,15 +35,15 @@ function ($http, c8yBase) {
    * @ngdoc function
    * @name createIdentity
    * @methodOf c8y.core.service:c8yIdentity
-   * 
+   *
    * @description
    * Creates new identity for managed object.
-   * 
+   *
    * @param {object} mo Managed object's id or object.
    * @param {object} identity Identity object.<!-- See identity object specification {@link http://docs.cumulocity.com/identity@TODO here}.-->
-   * 
+   *
    * @returns {promise} Returns $http's promise with response.
-   * 
+   *
    * @example
    * <pre>
    *   var identity = {
@@ -53,24 +53,24 @@ function ($http, c8yBase) {
    *   c8yIdentity.createIdentity($routeParams.deviceId, identity);
    * </pre>
    */
-  function createIdentity(mo, identity) {
+  function createIdentity(mo, identity, cfg) {
     var url = buildUrlMo(mo),
-      cfg = angular.copy(defaultConfig);
-    return $http.post(url, identity, cfg);
+      _cfg = _.assign(_.cloneDeep(defaultConfig), cfg);
+    return $http.post(url, identity, _cfg);
   }
 
   /**
    * @ngdoc function
    * @name deleteIdentity
    * @methodOf c8y.core.service:c8yIdentity
-   * 
+   *
    * @description
    * Deletes given identity.
-   * 
+   *
    * @param {integer|object} identity Identity's id or identity object.
-   * 
+   *
    * @returns {promise} Returns $http's promise with response.
-   * 
+   *
    * @example
    * <pre>
    *   var identityId = 11;
@@ -86,20 +86,16 @@ function ($http, c8yBase) {
    * @ngdoc function
    * @name listExternalIds
    * @methodOf c8y.core.service:c8yIdentity
-   * 
+   *
    * @description
    * Gets the list of identities for managed object.
-   * 
+   *
    * @param {integer|object} mo Managed object's id or object.
-   * 
+   *
    * @returns {promise} Returns promise with the list of identitiee.
-   * 
+   *
    * @example
    * <pre>
-   *   var identity = {
-   *     type: 'MY_ID',
-   *     externalId: 'ID-01'
-   *   };
    *   c8yIdentity.listExternalIds($routeParams.deviceId).then(function (externalIds) {
    *     $scope.externalIds = externalIds;
    *   });
@@ -114,14 +110,14 @@ function ($http, c8yBase) {
    * @ngdoc function
    * @name getExternalId
    * @methodOf c8y.core.service:c8yIdentity
-   * 
+   *
    * @description
    * Gets the details of external identity.
-   * 
+   *
    * @param {object} identity Identity's object.<!-- See identity object specification {@link http://docs.cumulocity.com/identity@TODO here}.-->
-   * 
+   *
    * @returns {promise} Returns $http's promise with the details of identity.
-   * 
+   *
    * @example
    * <pre>
    *   var identity = {
@@ -133,9 +129,9 @@ function ($http, c8yBase) {
    *   });
    * </pre>
    */
-  function getExternalId(identity) {
+  function getExternalId(identity, cfg) {
     var url = buildUrl(identity);
-    return $http.get(url);
+    return $http.get(url, cfg);
   }
 
   return {

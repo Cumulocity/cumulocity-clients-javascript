@@ -1,17 +1,30 @@
-/**
- * @ngdoc service
- * @name c8y.core.service:c8yGroups
- * @requires c8y.core.service:c8yInventory
- * @requires c8y.core.service:c8yGroupTypesConfig
- * @requires $q
- *
- * @description
- * This service allows for managing device and asset groups.
- */
-angular.module('c8y.core')
-.factory('c8yGroups', ['$q', 'c8yBase', 'c8yInventory', 'c8yGroupTypesConfig',
-  function ($q, c8yBase, c8yInventory, c8yGroupTypesConfig) {
-    'use strict';
+(function() {
+  'use strict';
+
+  /**
+   * @ngdoc service
+   * @name c8y.core.service:c8yGroups
+   * @requires c8y.core.service:c8yInventory
+   * @requires c8y.core.service:c8yGroupTypesConfig
+   * @requires $q
+   *
+   * @description
+   * This service allows for managing device and asset groups.
+   */
+  angular.module('c8y.core')
+    .factory('c8yGroups', [
+      '$q',
+      'c8yBase',
+      'c8yInventory',
+      'c8yGroupTypesConfig',
+      c8yGroups
+    ]);
+
+  function c8yGroups($q,
+    c8yBase,
+    c8yInventory,
+    c8yGroupTypesConfig
+  ) {
 
     /**
      * @ngdoc function
@@ -38,8 +51,14 @@ angular.module('c8y.core')
      * </pre>
      */
     function getGroupItems(group) {
-      return c8yInventory.detail(group).then(c8yBase.getResData)
-        .then(getChildrenIds).then(function (childrenIds) {
+      return c8yInventory.detail(group)
+        .then(c8yBase.getResData)
+        .then(getGroupItemsChildren);
+    }
+
+    function getGroupItemsChildren(group) {
+      return getChildrenIds(group)
+        .then(function (childrenIds) {
           return childrenIds.length > 0 ? c8yInventory.list({ids: childrenIds.join(','), pageSize: childrenIds.length}) : $q.when([]);
         });
     }
@@ -114,7 +133,7 @@ angular.module('c8y.core')
         _.forEach(groupTypesList, function (groupType) {
           promises.push(c8yInventory.list({type: groupType.type}));
         });
-        return $q.all(promises).then(_.flatten);
+        return $q.all(promises).then(_.flattenDeep);
       }
       return $q.when([]);
     }
@@ -150,4 +169,5 @@ angular.module('c8y.core')
       isGroup: isGroup
     };
   }
-]);
+
+}());

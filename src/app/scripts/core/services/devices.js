@@ -8,11 +8,31 @@
  * This service allows for managing devices.
  */
 angular.module('c8y.core')
-.factory('c8yDevices', ['$cacheFactory', '$filter', 'c8yInventory', 'c8yUser',
-function ($cacheFactory, $filter, c8yInventory, c8yUser) {
+.factory('c8yDevices', ['$cacheFactory', '$filter', '$q', 'c8yBase', 'c8yInventory', 'c8yGroups', 'c8yUser', 'gettextCatalog',
+function ($cacheFactory, $filter, $q, c8yBase, c8yInventory, c8yGroups, c8yUser, gettextCatalog) {
   'use strict';
 
   var deviceFragmentType = 'c8y_IsDevice',
+    KEYS_FOR_NODEVICE = [
+      'c8y_Dashboard',
+      'c8y_Report',
+      'c8y_Kpi',
+      'c8y_ExportConfiguration',
+      'c8y_IsBinary',
+      'c8y_NoDevice',
+      'c8y_IsDeviceGroup',
+      'c8y_Group',
+      'com_cumulocity_model_smartrest_SmartRestTemplate',
+      'com_cumulocity_model_devicesimulator_SensorTemplate',
+      '_attachments'
+    ],
+    TYPES_FOR_NO_DEVICE = [
+      'c8y_ConfigurationDump',
+      'c8y_Firmware',
+      'c8y_SmartRule',
+      'c8y_Software'
+    ],
+    breadcrumbsCache = {},
     availabilityIconMap = {
     CONNECTED: {
       icon: 'exchange',
@@ -59,19 +79,50 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
 
 
   function buildFilter(filter) {
-    return angular.extend({
+    return _.assign({
       skipChildrenNames: true,
       fragmentType: deviceFragmentType
     }, filter || {});
   }
 
-  function filterDevices(managedObjects) {
-    var filtered =  managedObjects.filter(function (mo) {
-      return mo[deviceFragmentType];
-    });
-    filtered.statistics = managedObjects.statistics;
-    filtered.paging = managedObjects.paging;
-    return filtered;
+  function createfilter(filterFn) {
+    var fn = function (managedObjects) {
+      var paging = managedObjects.paging;
+      var propertiesToFilter = ['refresh', 'next'];
+
+      _.forEach(propertiesToFilter, function (p) {
+        var _p = '__' + p;
+        if (!paging[_p] && paging[p]) {
+          paging[_p] = paging[p];
+          paging[p] = function () {
+            return paging[_p]().then(fn);
+          };
+        }
+      })
+
+      var filtered =  managedObjects.filter(filterFn);
+      filtered.statistics = managedObjects.statistics;
+      filtered.paging = managedObjects.paging;
+      return filtered;
+    };
+    return fn;
+  }
+
+
+  var filterDevices = createfilter(filterDeviceFragment);
+  function filterDeviceFragment(mo) {
+    return !!mo[deviceFragmentType];
+  }
+
+  var filterAllDevices = createfilter(filterNoDevices);
+  function filterNoDevices(mo) {
+    var keys = KEYS_FOR_NODEVICE;
+    var ownerReg = /^device_/;
+    var isdevice = filterDeviceFragment(mo) ||
+      // ownerReg.test(mo.owner || '') ||
+      ((TYPES_FOR_NO_DEVICE.indexOf(mo.type) === -1) &&
+      !_.find(keys, function (k) { return !_.isUndefined(mo[k]); }));
+    return isdevice;
   }
 
   /**
@@ -89,7 +140,7 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    * <pre>
    *   c8yDevices.list().then(function (devices) {
    *     $scope.devices = [];
-   *     angular.forEach(devices, function (device) {
+   *     _.forEach(devices, function (device) {
    *       $scope.devices.push(device);
    *     });
    *   });
@@ -104,6 +155,36 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
     }
 
     return http;
+  }
+
+  /**
+   * @ngdoc function
+   * @name searchIncludingChildDevices
+   * @methodOf c8y.core.service:c8yDevices
+   *
+   * @description
+   * Gets a list of all objects that can be a device (include subdevices) and try to exclude any object that's marked as non device
+   *
+   * @param {filter} object Object filter to send to Server
+   * @returns {promise} Returns promise with the list of filtered devices.
+   *
+   * @example
+   * <pre>
+   *   c8yDevices.searchIncludingChildDevices('mydevice').then(function (devices) {
+   *     $scope.devices = [];
+   *     _.forEach(devices, function (device) {
+   *       $scope.devices.push(device);
+   *     });
+   *   });
+   * </pre>
+   */
+  function searchIncludingChildDevices(opt) {
+    opt = opt || {};
+    var filter = _.omit(buildFilter(opt), ['fragmentType', 'query']);
+    var serverCall = opt.query ? c8yInventory.listQuery(opt.query, filter) :
+      c8yInventory.list(filter);
+
+    return serverCall.then(filterAllDevices);
   }
 
   /**
@@ -126,7 +207,7 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    * </pre>
    */
   function create(device) {
-    var mo = angular.copy(device);
+    var mo = _.cloneDeep(device);
     mo[deviceFragmentType] = true;
     c8yInventory.create(mo);
   }
@@ -188,7 +269,7 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    */
   function supportsOperation(device, operation) {
     var ops = device && device.c8y_SupportedOperations,
-      supports = (angular.isArray(ops) && (ops.indexOf(operation) > -1));
+      supports = (_.isArray(ops) && (ops.indexOf(operation) > -1));
 
     return !!supports;
   }
@@ -216,7 +297,7 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    */
   function getSupportedOperations(device) {
     var ops = [];
-    if (angular.isArray(device.c8y_SupportedOperations)) {
+    if (_.isArray(device.c8y_SupportedOperations)) {
       ops = device.c8y_SupportedOperations;
     }
     return ops;
@@ -524,8 +605,38 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    * </pre>
    */
   function detail(mo, params) {
-    var _params = angular.extend(params || {}, {withParents: true});
-    return c8yInventory.detail(mo, _params);
+    var _params = _.assign(params || {}, {withParents: true});
+    var detailPromise = c8yInventory.detail(mo, _params);
+    if (_detailCached.cache) {
+      _detailCached.cache.set(mo && (mo.id || mo), detailPromise);
+    }
+    return detailPromise;
+  }
+
+  /**
+   * @ngdoc function
+   * @name listChildren
+   * @methodOf c8y.core.service:c8yDevices
+   *
+   * @description
+   * Gets details of all children for a given device.
+   *
+   * @param {integer|object} mo Device object's id or device object.
+   *
+   * @example
+   * <pre>
+   *   deviceId = 1;
+   *   c8yDevices.listChildren(deviceId).then(function (children) {
+   *     $scope.childrenNames = _.map(children, 'name');
+   *   });
+   * </pre>
+   */
+  function listChildren(mo) {
+    var id = mo && mo.id || mo;
+    return $q.all([
+      c8yInventory.childDevices(id),
+      c8yInventory.childAssets(id),
+    ]).then(_.flattenDeep);
   }
 
   /**
@@ -574,7 +685,10 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    * </pre>
    */
   var _detailCached = _.memoize(detail, function (moOrId) {
-    return moOrId && (moOrId.id || moOrId);
+    // Caution: Just have to be careful because this approch will break in future versions of lodash. Leave a comment about this for future reference.
+    var moId = moOrId && (moOrId.id || moOrId);
+    detail(moId); // updates _detailCached.cache
+    return moId;
   });
 
   /**
@@ -598,7 +712,11 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    * </pre>
    */
   function isDevice(mo) {
-    return angular.isDefined(mo[deviceFragmentType]);
+    return !_.isUndefined(mo[deviceFragmentType]);
+  }
+
+  function isChildDevice(mo) {
+    return mo.deviceParents.references.length > 0;
   }
 
   /**
@@ -677,10 +795,13 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    * </pre>
    */
   function availabilityTooltip(mo) {
-    var availability = mo.c8y_Availability,
-      lastMessage = availability && $filter('relativeDateShort')(availability.lastMessage);
+    var availability = mo.c8y_Availability;
+    var lastMessage = availability && availability.lastMessage &&
+        $filter('absoluteDate')(availability.lastMessage);
 
-    return lastMessage ? 'Last Message: ' + lastMessage : 'Connection not monitored';
+    return lastMessage ?
+      gettextCatalog.getString('Last message: {{date}}', {date: lastMessage}) :
+      gettextCatalog.getString('Connection not monitored');
   }
 
   /**
@@ -727,7 +848,7 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
    * name;
    *
    * @param  {object} mo Device object
-   * @return Display-friendly name for the device.
+   * @return {string} Display-friendly name for the device.
    */
   function properName(device) {
     if(!device) { return; }
@@ -736,39 +857,163 @@ function ($cacheFactory, $filter, c8yInventory, c8yUser) {
     return '<Device has no name>';
   }
 
+  function getChildren(device) {
+    var childAssets = device.childAssets ? device.childAssets.references : [];
+    var childDevices = device.childDevices ? device.childDevices.references : [];
+    var promiseArray = _.map(
+      _.uniqBy(
+        _.union(
+          childAssets,
+          childDevices
+        ), 'id'
+      ), function (child) {
+        return detail(child.managedObject.id);
+      }
+    );
+    return $q.all(promiseArray)
+      .then(function (responses) {
+        return _.map(responses, function (response) {
+          return response.data;
+        });
+      });
+  }
+
+  function canSwitchResponseInterval(device) {
+    return device &&
+      device.c8y_RequiredAvailability &&
+      device.c8y_RequiredAvailability.responseInterval &&
+      parseInt(device.c8y_RequiredAvailability.responseInterval, 10) !== 0;
+  }
+
   function switchResponseInterval(device) {
     var mo = {id:device.id, c8y_RequiredAvailability: {}};
-    if(device.c8y_RequiredAvailability.responseInterval != 0) {
+    if (canSwitchResponseInterval(device)) {
       mo.c8y_RequiredAvailability.responseInterval = -device.c8y_RequiredAvailability.responseInterval;
     }
     return c8yInventory.update(mo);
   }
 
-  return angular.extend(angular.copy(c8yInventory), {
+  function getBreadcrumbsData(device) {
+
+    function collectBreadcrumbs(breadcrumbs, path, item) {
+      if (item) {
+        path.unshift(getBreadcrumb(item));
+        return $q.all([
+          c8yInventory.directParentDevices(item),
+          c8yInventory.directParentAssets(item)
+        ]).then(function (results) {
+          var parents = [].concat(results[0]).concat(results[1]);
+          if (parents.length === 0) {
+            breadcrumbs.push(path);
+            return $q.when(breadcrumbs);
+          } else {
+            var promises = [];
+            _.forEach(parents, function (parent) {
+              promises.push(c8yInventory.detail(parent.id, {withParents: true}).then(c8yBase.getResData).then(function (p) {
+                return $q.when(collectBreadcrumbs(breadcrumbs, _.cloneDeep(path), p));
+              }));
+            });
+            return $q.all(promises).then(function () {
+              return breadcrumbs;
+            });
+          }
+        });
+      } else {
+        return $q.when(breadcrumbs);
+      }
+    }
+
+    function getBreadcrumb(item) {
+      return {
+        label: item.name || 'Device ' + item.id,
+        path: getBreadcrumbPath(item),
+        icon: getBreadcrumbIcon(item),
+        isDevice: isDevice(item),
+        isGroup: c8yGroups.isGroup(item),
+        id: item.id
+      };
+    }
+
+    function getBreadcrumbPath(item) {
+      var path = '#/';
+      path += isDevice(item) ? 'device' : 'group';
+      return path + '/' + item.id;
+    }
+
+    function getBreadcrumbIcon(item) {
+      return isDevice(item) ? 'hdd-o' : 'folder-open';
+    }
+
+    function filterBreadcrumbPaths(breadcrumbPaths) {
+      return _.filter(breadcrumbPaths, function (path) {
+        return _.some(_.without(path, path[path.length-1]), function (breadcrumb) {
+          return breadcrumb.isDevice || breadcrumb.isGroup;
+        });
+      });
+    }
+
+    function orderBreadcrumbPaths(breadcrumbPaths) {
+      return _.sortBy(breadcrumbPaths, function(item) {
+        return -1 * item.length;
+      });
+    }
+
+    var deviceId = device ? (device.id || device) : undefined;
+    var breadcrumbsPromise = null;
+
+    if (deviceId) {
+      if (breadcrumbsCache[deviceId]) {
+        breadcrumbsPromise = $q.when(breadcrumbsCache[deviceId]);
+      }
+      var refreshedBreadcrumbsPromise = _detailCached(deviceId)
+        .then(c8yBase.getResData)
+        .then(function (currentDevice) {
+          return collectBreadcrumbs([], [], currentDevice)
+            .then(function (breadcrumbs) {
+              breadcrumbs = filterBreadcrumbPaths(breadcrumbs);
+              breadcrumbs = orderBreadcrumbPaths(breadcrumbs);
+              breadcrumbsCache[deviceId] = breadcrumbs;
+              return breadcrumbs;
+            });
+        });
+      breadcrumbsPromise = breadcrumbsPromise || refreshedBreadcrumbsPromise;
+    }
+
+    return breadcrumbsPromise || $q.when([]);
+  }
+
+  return _.assign(_.cloneDeep(c8yInventory), {
     list: list,
+    searchIncludingChildDevices: searchIncludingChildDevices,
     save: save,
     update: update,
     detail: detail,
+    listChildren: listChildren,
     detailCached: _detailCached,
     create: create,
     removeWithUser: removeWithUser,
     supportsOperation: supportsOperation,
     getSupportedOperations: getSupportedOperations,
+    getChildren: getChildren,
     isVendme: isVendme,
     statusIcon: statusIcon,
     statusClass: statusClass,
     parseAvailability: parseAvailability,
     getCount: getCount,
     isDevice: isDevice,
+    isChildDevice: isChildDevice,
     model: model,
     serial: serial,
     availabilityTooltip: availabilityTooltip,
     properName: properName,
+    canSwitchResponseInterval: canSwitchResponseInterval,
     switchResponseInterval: switchResponseInterval,
     isLastValidMessage: isLastValidMessage,
     lastValidMessageColor: lastValidMessageColor,
     lastValidMessageTooltip: lastValidMessageTooltip,
-    lastValidMessageIcon: lastValidMessageIcon
+    lastValidMessageIcon: lastValidMessageIcon,
+    getBreadcrumbsData: getBreadcrumbsData,
+    isProbablyDevice: filterNoDevices
   });
 
 }]);

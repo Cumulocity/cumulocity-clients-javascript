@@ -1,3 +1,6 @@
+(function () {
+'use strict';
+
 /**
  * @ngdoc service
  * @name c8y.core.service:c8yAlarms
@@ -8,10 +11,29 @@
  * @description
  * This service allows for managing alarms.
  */
-angular.module('c8y.core')
-.factory('c8yAlarms', ['$http', 'c8yBase', 'c8yCounter', '$q',
-function ($http, c8yBase, c8yCounter, $q) {
-  'use strict';
+angular.module('c8y.core').service('c8yAlarms', [
+  '$http',
+  'c8yBase',
+  'c8yCounter',
+  '$q',
+  'c8yAudits',
+  'gettext',
+  'gettextCatalog',
+  'KeysMixin',
+  C8yAlarms
+]);
+
+function C8yAlarms(
+  $http,
+  c8yBase,
+  c8yCounter,
+  $q,
+  c8yAudits,
+  gettext,
+  gettextCatalog,
+  KeysMixin
+) {
+  var self = this;
 
   var clean = c8yBase.cleanFields,
     path = 'alarm/alarms',
@@ -36,10 +58,10 @@ function ($http, c8yBase, c8yCounter, $q) {
      * </pre>
      */
     severity = {
-      WARNING: 'WARNING',
-      MINOR: 'MINOR',
-      MAJOR: 'MAJOR',
-      CRITICAL: 'CRITICAL'
+      WARNING: gettext('WARNING'),
+      MINOR: gettext('MINOR'),
+      MAJOR: gettext('MAJOR'),
+      CRITICAL: gettext('CRITICAL')
     },
     /**
      * @ngdoc property
@@ -52,16 +74,16 @@ function ($http, c8yBase, c8yCounter, $q) {
      *   $scope.alarmSeverities = c8yAlarms.severityList;
      * </pre>
      */
-    severityList = Object.keys(severity),
+    severityList = _.keys(severity),
     /**
      * @ngdoc property
      * @name status
      * @propertyOf c8y.core.service:c8yAlarms
      * @returns {object} Alarm statuses map. Available values are:
      *
-     * - **ACTIVE** – Alarm is just a warning.
-     * - **ACKNOWLEDGED** - Alarm has got minor severity.
-     * - **CLEARED** - Alarm has got major severity.
+     * - **ACTIVE** – Alarm is still active.
+     * - **ACKNOWLEDGED** - Alarm has already been acknowledged.
+     * - **CLEARED** - Alarm has been cleared.
      *
      * @example
      * <pre>
@@ -69,9 +91,9 @@ function ($http, c8yBase, c8yCounter, $q) {
      * </pre>
      */
     status = {
-      ACTIVE: 'ACTIVE',
-      ACKNOWLEDGED: 'ACKNOWLEDGED',
-      CLEARED: 'CLEARED'
+      ACTIVE: gettext('ACTIVE'),
+      ACKNOWLEDGED: gettext('ACKNOWLEDGED'),
+      CLEARED: gettext('CLEARED')
     },
     /**
      * @ngdoc property
@@ -84,36 +106,41 @@ function ($http, c8yBase, c8yCounter, $q) {
      *   $scope.alarmStatuses = c8yAlarms.statusList;
      * </pre>
      */
-    statusList = Object.keys(status),
-    _reservedKeys = [
-      'history',
-      'id',
-      'severity',
-      'self',
-      'source',
-      'creationTime',
-      'time',
-      'text',
-      'firstOccurrence',
-      'count',
-      'firstOccurrenceTime'
-    ],
-    /**
-     * @ngdoc property
-     * @name reservedKeys
-     * @propertyOf c8y.core.service:c8yAlarms
-     * @returns {array} The list of reserved keys for alarm fields.
-     *
-     * @example
-     * <pre>
-     *   $scope.reservedKeys = c8yAlarms.reservedKeys;
-     * </pre>
-     */
-    reservedKeys = ['status'].concat(_reservedKeys),
+    statusList = _.keys(status),
     removeKeys = ['id'],
     removeKeysOnUpdate = ['id', 'self', 'creationTime', 'type', 'time', 'count', 'history', 'firstOccurence', 'firstOccurrenceTime'],
     icons = {},
     statusAttribute = 'status';
+
+  /**
+   * @ngdoc property
+   * @name reservedKeys
+   * @propertyOf c8y.core.service:c8yAlarms
+   * @returns {array} The list of reserved keys for alarm fields.
+   *
+   * @example
+   * <pre>
+   *   $scope.reservedKeys = c8yAlarms.reservedKeys;
+   * </pre>
+   */
+  this.reservedKeys = [
+    'history',
+    'id',
+    'severity',
+    'self',
+    'source',
+    'creationTime',
+    'time',
+    'text',
+    'firstOccurrence',
+    'count',
+    'firstOccurrenceTime',
+    'status'
+  ];
+
+  this.standardKeys = {
+    type: gettext('Type')
+  };
 
   icons[severity.WARNING] = 'circle';
   icons[severity.MINOR] = 'exclamation-circle';
@@ -156,7 +183,6 @@ function ($http, c8yBase, c8yCounter, $q) {
    *     - **name** - source device name.
    * - **count** - `integer` - Alarm's count.
    * - **firstOccurrence** - `boolean` - Indicates that this is the first occurrence of the alarm.
-   * - **history** - `object` - Contains the list of history items in  **auditRecords** property.
    * - **severity** - `string` - Alarm's severity level ({@link c8y.core.service:c8yAlarms#severity c8yAlarms.severity}).
    * - **status** - `string` - Alarm's status ({@link c8y.core.service:c8yAlarms#status c8yAlarms.status}}.
    * - **self** - `string` - Alarm's self URL.
@@ -171,7 +197,7 @@ function ($http, c8yBase, c8yCounter, $q) {
    *     pageSize: 100
    *   }).then(function (alarms) {
    *     $scope.alarms = [];
-   *     angular.forEach(alarms, function(alarm) {
+   *     _.forEach(alarms, function(alarm) {
    *       $scope.alarms.push(alarm);
    *     });
    *   });
@@ -206,7 +232,6 @@ function ($http, c8yBase, c8yCounter, $q) {
    * - **count** - `integer` - Alarm's count.
    * - **creationTime** - `string` - Date and time when alarm was created on the platform.
    * - **firstOccurrence** - `boolean` - Indicates that this is the first occurrence of the alarm.
-   * - **history** - `object` - Contains the list of history items in  **auditRecords** property.
    * - **id** - `integer` - Alarms' id.
    * - **self** - `string` - Alarm's self URL.
    * - **severity** - `string` - Alarm's severity level ({@link c8y.core.service:c8yAlarms#severity c8yAlarms.severity}).
@@ -351,38 +376,58 @@ function ($http, c8yBase, c8yCounter, $q) {
    * <pre>
    *   var alarmId = 1;
    *   c8yAlarms.detail(alarmId).then(function (alarm) {
-   *     $scope.alarmAcknowledgedBy = c8yAlarms.acknowledgedBy(alarm);
+   *     c8yAlarms.acknowledgedBy(alarm).then(function (ackBy) {
+   *       $scope.alarmAcknowledgedBy = ackBy;
+   *     })
    *   });
    * </pre>
    */
-  function acknowledgedBy(alarm) {
-    var history = (alarm.history && alarm.history.auditRecords) || [],
-      ackBy = '--';
+  function acknowledgedBy(alarm, audits) {
+    var username;
 
-    //Assume it's the last user who changed the alarm
-    if (alarm.status === status.ACKNOWLEDGED) {
-      ackBy = history[history.length - 1].user;
+    if (audits) {
+      username = fn(audits);
+    } else {
+      username = c8yAudits
+        .list({
+          source: alarm.id,
+          pageSize: 1000
+        })
+        .then(fn);
     }
 
-    //Run through the history to see who change the status to ack
-    history.forEach(function (historyItem) {
-      var changes = historyItem.changes || [],
-        acknowledged = false;
+    return username;
 
-      changes.forEach(function (change) {
-        if (change.attribute === statusAttribute && change.newValue === status.ACKNOWLEDGED) {
-          acknowledged = true;
+    ////////////
+
+    function fn(audits) {
+      var ackBy = '--';
+
+      // Assume it's the last user who changed the alarm
+      if (alarm.status === status.ACKNOWLEDGED && !_.isEmpty(audits)) {
+        ackBy = _.last(audits).user;
+      }
+
+      // Run through the history to see who change the status to ack
+      audits.forEach(function (audit) {
+        var changes = audit.changes || [];
+        var acknowledged = false;
+
+        changes.forEach(function (change) {
+          if (change.attribute === statusAttribute && change.newValue === status.ACKNOWLEDGED) {
+            acknowledged = true;
+            return false;
+          }
+        });
+
+        if (acknowledged) {
+          ackBy = audit.user || ackBy;
           return false;
         }
       });
 
-      if (acknowledged) {
-        ackBy = historyItem.user || ackBy;
-        return false;
-      }
-    });
-
-    return ackBy;
+      return ackBy;
+    }
   }
 
   /**
@@ -405,31 +450,41 @@ function ($http, c8yBase, c8yCounter, $q) {
    *   });
    * </pre>
    */
-  function ackTime(alarm) {
-    var history = (alarm.history && alarm.history.auditRecords) || [],
-      //get the last audit record time by default. some don't have 'changes'
-      time = history.length ? history[history.length-1].creationTime : undefined;
+  function ackTime(alarm, audits) {
+    function fn(audits) {
+      var history = audits || [],
+        //get the last audit record time by default. some don't have 'changes'
+        time = history.length ? history[history.length-1].creationTime : undefined;
 
-    history.forEach(function (historyItem) {
-      var changes = historyItem.changes || [],
-        found = false;
+      history.forEach(function (historyItem) {
+        var changes = historyItem.changes || [],
+          found = false;
 
-      changes.forEach(function (change) {
+        changes.forEach(function (change) {
 
-        if (change.attribute === statusAttribute && change.newValue === status.ACKNOWLEDGED) {
-          time = historyItem.creationTime;
-          found = true;
+          if (change.attribute === statusAttribute && change.newValue === status.ACKNOWLEDGED) {
+            time = historyItem.creationTime;
+            found = true;
+            return false;
+          }
+
+        });
+
+        if (found) {
           return false;
         }
-
       });
+      return time;
+    }
 
-      if (found) {
-        return false;
-      }
-    });
-
-    return time;
+    if (audits) {
+      return fn(audits);
+    } else {
+      return c8yAudits.list({
+        source: alarm.id,
+        pageSize: 1000
+      }).then(fn);
+    }
   }
 
   /**
@@ -452,108 +507,58 @@ function ($http, c8yBase, c8yCounter, $q) {
    *   });
    * </pre>
    */
-  function alarmDuration(alarm) {
-    var history = (alarm.history && alarm.history.auditRecords) || [],
-      time = alarm.creationTime,
-      endTime = history.length ? history[history.length-1].creationTime : undefined,
-      diff = '';
+  function alarmDuration(alarm, audits) {
+    var diff = alarmDurationDiff(alarm, audits);
+    if (diff.humanize) {
+      return diff.humanize();
+    } else {
+      return diff.then(function (d) {
+        return d.humanize ? d.humanize() : '';
+      });
+    }
+  }
 
-    _.forEach(history, function (historyItem) {
-      var changes = historyItem.changes || [],
-        found = false;
+  function alarmDurationDiff(alarm, audits) {
+    function fn(audits) {
+      var history = (audits) || [],
+        time = alarm.creationTime,
+        endTime = history.length ? history[history.length-1].creationTime : undefined,
+        diff = '';
 
-      changes.forEach(function (change) {
-        if (change.attribute === statusAttribute && change.newValue === status.CLEARED) {
-          endTime = historyItem.creationTime;
-          found = true;
+      _.forEach(history, function (historyItem) {
+        var changes = historyItem.changes || [],
+          found = false;
+
+        changes.forEach(function (change) {
+          if (change.attribute === statusAttribute && change.newValue === status.CLEARED) {
+            endTime = historyItem.creationTime;
+            found = true;
+            return false;
+          }
+        });
+
+        if (found) {
           return false;
         }
       });
 
-      if (found) {
-        return false;
+      if (time && endTime) {
+        var _time = moment(time),
+          _endTime = moment(endTime);
+        diff = moment.duration(_time.diff(_endTime));
       }
-    });
 
-    if (time && endTime) {
-      var _time = moment(time),
-        _endTime = moment(endTime);
-      diff = moment.duration(_time.diff(_endTime)).humanize();
+      return diff;
     }
 
-    return diff;
-  }
-
-  /**
-   * @ngdoc function
-   * @name parseChanges
-   * @methodOf c8y.core.service:c8yAlarms
-   *
-   * @description
-   * Parses list of alarm changes into human-readable list.
-   *
-   * @param {array} changes List of alarm changes (from `history.auditRecords[i].changes`).
-   *
-   * @returns {string} String with a list of changed attributes with previous and new values.
-   *
-   * @example
-   * <pre>
-   *   var alarmId = 1;
-   *   c8yAlarms.detail(alarmId).then(function (alarm) {
-   *     $scope.changes = [];
-   *     alarm.history.auditRecords.forEach(function (auditRecord) {
-   *       $scope.changes = c8yAlarms.parseChanges(auditRecord.changes);
-   *     });
-   *   });
-   * </pre>
-   */
-  function parseChanges(changes) {
-    var _changes = changes || [],
-      outList = [];
-
-    _changes.forEach(function (change) {
-      if (change.attribute === 'revision') {
-        return true;
-      }
-      outList.push(change.attribute + ': ' + change.previousValue + ' > ' + change.newValue);
-    });
-
-    return outList.join(' ; ');
-  }
-
-  function isReservedKey(key) {
-    return reservedKeys.indexOf(key) !== -1;
-  }
-
-  function isNotReservedKey(key) {
-    return !isReservedKey(key);
-  }
-
-  /**
-   * @ngdoc function
-   * @name getKeys
-   * @methodOf c8y.core.service:c8yAlarms
-   *
-   * @description
-   * Gets the list of property names for an alarm.
-   *
-   * @param {object} alarm Alarm object.
-   *
-   * @returns {array} Returns the list of alarm properties.
-   *
-   * @example
-   * <pre>
-   *   var alarmId = 1;
-   *   c8yAlarms.detail(alarmId).then(function (alarm) {
-   *     $scope.keys = c8yAlarms.getKeys(alarm);
-   *   });
-   * </pre>
-   */
-  function getKeys(alarm) {
-    var _alarm = angular.copy(alarm),
-      props = Object.keys(_alarm);
-
-    return props.filter(isNotReservedKey);
+    if (audits) {
+      return fn(audits);
+    } else {
+      return c8yAudits.list({
+        source: alarm.id,
+        pageSize: 1000
+      }).then(fn);
+    }
   }
 
   /**
@@ -577,7 +582,7 @@ function ($http, c8yBase, c8yCounter, $q) {
    * </pre>
    */
   function icon(alarm) {
-    var severity = (angular.isObject(alarm) ? alarm.severity : alarm).toUpperCase();
+    var severity = (_.isObjectLike(alarm) ? alarm.severity : alarm).toUpperCase();
     return icons[severity];
   }
 
@@ -689,17 +694,72 @@ function ($http, c8yBase, c8yCounter, $q) {
   }
 
   function getSeverityCount(alarms, severity) {
-    var result = _.where(alarms, {severity: severity});
+    var result = _.filter(alarms, {severity: severity});
     return result.length;
   }
 
   function onAlarms(alarms) {
     return _.filter(alarms, function(alarm) {
-      return angular.isDefined(alarm);
+      return !_.isUndefined(alarm);
     });
   }
 
-  return {
+  function memoize(fn) {
+    var memoizedFn =  _.memoize(fn, function (alarm) {
+      return [alarm.id, alarm.status, alarm.count].join(':');
+    });
+
+    return function (alarm, auditList) {
+      return memoizedFn(alarm, auditList);
+    };
+  }
+
+  function statusText(alarm, audits) {
+    var statusFn;
+    var alarmStatus = (alarm.status || '').toUpperCase();
+    switch (alarmStatus) {
+    case status.ACKNOWLEDGED:
+      statusFn = getStatusMessageAcknowledged;
+      break;
+    case status.CLEARED:
+      statusFn = getStatusMessageCleared;
+      break;
+    case status.ACTIVE:
+      statusFn = getStatusMessageActive;
+      break;
+    }
+
+    return (statusFn && statusFn(alarm, audits));
+  }
+
+  function getStatusMessageAcknowledged(alarm, audits) {
+    var ackBy = $q.when(self.acknowledgedBy(alarm, audits));
+    var ackTime = $q.when(self.ackTime(alarm, audits));
+    return $q.all([ackBy, ackTime])
+      .then(function (results) {
+        return gettextCatalog.getString('ACKNOWLEDGED by: {{ackBy}} {{ackTimeFromNow}}', {
+          ackBy: results[0],
+          ackTimeFromNow: moment(results[1]).fromNow()
+        });
+      });
+  }
+
+  function getStatusMessageCleared(alarm, audits) {
+    return $q.when(self.alarmDuration(alarm, audits))
+      .then(function (alarmDuration) {
+        return gettextCatalog.getString('CLEARED: was active for {{alarmDuration}}', {
+          alarmDuration: alarmDuration
+        });
+      });
+  }
+
+  function getStatusMessageActive(alarm) {
+    return $q.when(gettextCatalog.getString('ACTIVE: triggered {{alarmTimeFromNow}}', {
+      alarmTimeFromNow: moment(alarm.time).fromNow()
+    }));
+  }
+
+  _.assign(this, {
     list: list,
     listByStatus: listByStatus,
     listByDevices: listByDevices,
@@ -708,21 +768,23 @@ function ($http, c8yBase, c8yCounter, $q) {
     update: update,
     create: create,
     save: save,
-    acknowledgedBy: acknowledgedBy,
-    ackTime: ackTime,
-    alarmDuration: _.memoize(alarmDuration, function (a) { return a.id; }),
-    parseChanges: parseChanges,
+    acknowledgedBy: memoize(acknowledgedBy),
+    ackTime: memoize(ackTime),
+    alarmDuration: memoize(alarmDuration),
+    alarmDurationDiff: memoize(alarmDurationDiff),
     severity: severity,
     severityList: severityList,
     status: status,
     statusList: statusList,
-    reservedKeys: reservedKeys,
+    statusText: memoize(statusText),
     icon: icon,
-    getKeys: getKeys,
     reports: {
       downtimeDuration: reportDownTimeDuration
     },
     createCounter: createCounter
-  };
+  });
 
-}]);
+  _.assign(this, KeysMixin);
+  _.bindAll(this, _.keys(KeysMixin));
+}
+})();
