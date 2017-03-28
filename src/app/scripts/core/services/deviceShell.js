@@ -40,7 +40,7 @@
       * Final collection with command templates is returned by a promise.
       *
       * @param  {string} Device type - required
-      * @return {promise} Promise with command templates for specyfic device type.
+      * @returns {promise} Promise with command templates for specyfic device type.
       */
      function getCommandTemplatesForDeviceType(deviceType) {
        var url = getCommandTemplatesUrl(deviceType);

@@ -28,7 +28,7 @@ function ($http, c8yBase) {
   function buildUrl(identity) {
     return c8yBase.url(path) + '/externalIds/' +
       identity.type + '/' +
-      identity.externalId;
+      encodeURIComponent(identity.externalId);
   }
 
   /**

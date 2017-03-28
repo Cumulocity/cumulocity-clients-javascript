@@ -37,7 +37,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
    * properties of objects will be stored. With string notation, a default
    * property map is created for that property name.
    *
-   * @return {object} A PropertyMap instance.
+   * @returns {object} A PropertyMap instance.
    */
   function PropertyMap(propertyMap) {
     propertyMap = _.cloneDeep(propertyMap);
@@ -208,7 +208,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
    *                            an array of objects to be counted, after
    *                            applying a filter if available.
    * @param  {string} realtimeChannel  Channel for realtime subscription.
-   * @return {Counter} A Counter instance.
+   * @returns {Counter} A Counter instance.
    */
   function Counter(listFn, realtimeChannel) {
     if(!_.isFunction(listFn)) {
@@ -244,7 +244,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
      * Fetches objects to count using the list function and subscribes to a
      * realtime channel.
      *
-     * @return {promise} Promise that resolves when tasks are
+     * @returns {promise} Promise that resolves when tasks are
      * complete.
      */
     this.start = function () {
@@ -301,7 +301,7 @@ function c8yCounter($q, c8yBase, c8yRealtime) {
      * Fetches objects to count using the list function. Should be used to
      * refresh the count when realtime subscription is not used.
      *
-     * @return {promise} Promise that is resolved when count is refreshed.
+     * @returns {promise} Promise that is resolved when count is refreshed.
      *
      */
     this.refresh = function () {

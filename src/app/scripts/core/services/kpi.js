@@ -69,20 +69,22 @@
 
     function isPureKpi(mo) {
       var allowedKeys = [
-          'assetParents',
-          FRAG,
-          'childAssets',
-          'childDevices',
-          'deviceParents',
-          'id',
-          'lastUpdated',
-          'creationTime',
-          'owner',
-          'self',
-          'c8y_Global',
-          '_fragments'
-        ],
-        keys = _.keys(mo);
+        FRAG,
+        'id',
+        'lastUpdated',
+        'creationTime',
+        'owner',
+        'self',
+        'c8y_Global',
+        '_fragments',
+        'assetParents',
+        'deviceParents',
+        'additionParents',
+        'childAssets',
+        'childDevices',
+        'childAdditions'
+      ];
+      var keys = _.keys(mo);
 
       return _.every(keys, function (key) {
         return allowedKeys.indexOf(key) > -1;

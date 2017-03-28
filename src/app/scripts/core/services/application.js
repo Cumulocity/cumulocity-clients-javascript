@@ -283,7 +283,7 @@
      * @description
      * Gets the list of all available plugins
      *
-     * @return {promise} Returns the promise that resolves with an array of plugins
+     * @returns {promise} Returns the promise that resolves with an array of plugins
      *
      */
     function listPlugins() {
@@ -307,7 +307,7 @@
      * @description
      * Gets the list of plugins available for tenant
      *
-     * @return {promise} Returns the promise that resolves with an array of plugins
+     * @returns {promise} Returns the promise that resolves with an array of plugins
      *
      */
     function listPluginsByTenant() {
@@ -335,7 +335,7 @@
      * @description
      * Gets the list of plugins imported by given application.
      *
-     * @return {promise} Returns the promise that resolves with an array of plugin manifests.
+     * @returns {promise} Returns the promise that resolves with an array of plugin manifests.
      */
     function listPluginsByApplication(app) {
       var url = c8yBase.url(basePath2 + '/' + app.contextPath + '/manifest'),
@@ -356,7 +356,7 @@
      * @description
      * Gets the list of plugins contained in given PaaS application.
      *
-     * @return {promise} Returns the promise that resolves with an array of plugin infos containing: pluginName and pluginPackage.
+     * @returns {promise} Returns the promise that resolves with an array of plugin infos containing: pluginName and pluginPackage.
      */
     listPluginsByPaasApp._cache = {};
 

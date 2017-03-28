@@ -85,11 +85,11 @@
     }
 
     function isGPSEvent(event) {
-      return !event.c8y_Position || !event.c8y_Position.fixType || event.c8y_Position.fixType === 'No Fix';
+      return !isGSMEvent(event);
     }
 
     function isGSMEvent(event) {
-      return event.c8y_Position && event.c8y_Position.fixType === 'GSM';
+      return /gsm/gi.test(_.get(event, 'c8y_Position.fixType'));
     }
 
     Tracker.prototype._filterEvents = function (events) {

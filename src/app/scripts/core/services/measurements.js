@@ -30,8 +30,8 @@
     $timeout,
     c8yBase,
     c8yCepModule,
-    c8yRealtime) {
-
+    c8yRealtime
+  ) {
     var clean = c8yBase.clean;
     var path = 'measurement/measurements';
     var defaultConfig = {
@@ -44,6 +44,7 @@
         'from MeasurementCreated;'
     };
     var PAGE_SIZE = 1440;
+    var checkForJsonStream = _.once(_checkForJsonStream);
 
     function buildDetailUrl(measurement) {
       var id = measurement.id || measurement;
@@ -62,14 +63,20 @@
      *   c8yMeasurements.list({}, c8yMeasurements.accept.xslx);
      * </pre>
      */
-    var format = c8yBase.createEnum([
+    var Format = c8yBase.createEnum([
+      {name: 'stream', value: 'application/json-stream'},
       {name: 'csv', value: 'text/csv'},
       {name: 'xlsx', value: 'application/vnd.ms-excel'}
     ]);
 
     function acceptHeader(_format) {
-      var isValid = _format && _(format).map('value').includes(_format.value);
-      return isValid ? _format.value : 'application/json';
+      return checkForJsonStream().then(function () {
+        var isValid = _format && _(Format)
+          .reject('notAcceptable')
+          .map('value')
+          .includes(_format.value);
+        return isValid ? _format.value : 'application/json';
+      });
     }
 
     /**
@@ -112,7 +119,8 @@
         params: _filters
       };
       var onList;
-      if(format) {
+
+      if (format) {
         cfg.responseType = 'blob';
         onList = function (res) {
           return res.data;
@@ -124,13 +132,81 @@
        );
       }
 
-      cfg.headers = {Accept: acceptHeader(format)};
-      return $http.get(url, cfg).then(function (res) {
-        if (res.status === 202) {
-          return $q.reject({async: true, data: res.data});
+      return acceptHeader(format || Format.stream)
+        .then(function (accept) {
+          cfg.headers = {Accept: accept};
+          return $http.get(url, cfg).then(function (res) {
+            if (res.status === 202) {
+              return $q.reject({async: true, data: res.data});
+            }
+            return res;
+          });
+        })
+        .then(onList);
+    }
+
+    /**
+     * @ngdoc function
+     * @name listPaged
+     * @methodOf c8y.core.service:c8yMeasurements
+     *
+     * @description
+     * Gets the paged list of measurements for given filters.
+     *
+     * @param {object} filters Object containing filters for querying measurements. Supported filters are:
+     *
+     * - **fragmentType** - `string` - Filter measurements with given fragment type.
+     * - **type** - `string` - Filter measurements with given type.
+     * - **source** - `integer` - Measurements source's id.
+     * - **dateFrom** - `string` - Limit measurements to those after given date.
+     * - **dateTo** - `string` - Limit measurements to those before given date.
+     *
+     * @returns {promise} Returns promise with the paged list of filtered measurements.<!-- See measurement object specification {@link http://docs.cumulocity.com/measurements@TODO here}.-->
+     *
+     * @example
+     * <pre>
+     *   c8yMeasurements.listPaged(
+     *     _.assign(c8yBase.timeOrderFilter(), {
+     *       source: $routeParams.deviceId,
+     *       type: 'CustomMeasurement'
+     *     })
+     *   ).then(function (measurements) {
+     *     $scope.measurements = measurements;
+     *   });
+     * </pre>
+     */
+    function listPaged(filters) {
+      var defer = $q.defer();
+      var _filters = _.assign(filters || {}, {
+        pageSize: 1000,
+        withTotalPages: true
+      });
+      var cancelled = false;
+      var onList = function (list) {
+        var isNext = !_.isUndefined(list.paging.next) && (list.length >= _filters.pageSize);
+        defer.notify(list);
+
+        if (!isNext) {
+          defer.resolve(true);
         }
-        return res;
-      }).then(onList);
+
+        if (cancelled) {
+          return true;
+        }
+
+        return isNext ? list.paging.next().then(onList) : true;
+      };
+
+      _.assign(defer.promise, {
+        cancel: function () {
+          cancelled = true;
+          defer.reject('canceled');
+        }
+      });
+
+      list(_filters).then(onList);
+
+      return defer.promise;
     }
 
     /**
@@ -139,24 +215,31 @@
      * @methodOf c8y.core.service:c8yMeasurements
      *
      * @description
-     * Gets the list of measurements series for given a specific fragmentType
+     * Gets a filtered list of measurements in series.
      *
-     * @param {object} filters Object containing filters for querying measurements. Supported filters are:
+     * @param {object} filters Object containing filters for querying measurements. Supported properties are:
      *
-     * - **fragmentType** - `string` - Filter measurements with given fragment type.
-     * - **source** - `integer` - Measurements source's id.
+     * - **source** - `integer` - Device's id.
      * - **dateFrom** - `string` - Limit measurements to those after given date.
      * - **dateTo** - `string` - Limit measurements to those before given date.
-     * - **revert** - `boolean` - Get measurements order in reverse order.
+     * - **aggregationType** - `string` - The aggregation type to apply.
+     * - **series** - `string|array` - The list of series (fragment type and series name) to filter.
      *
-     * @returns {promise} Returns promise with the list of filtered measurements.<!-- See measurement object specification {@link http://docs.cumulocity.com/measurements@TODO here}.-->
+     * @returns {promise} Returns a promise with the list of filtered measurements in the format described
+     * {@link http://cumulocity.com/guides/reference/measurements/#get-retrieve-all-or-some-series-of-measurements here}.
      *
      * @example
      * <pre>
      *   c8yMeasurements.listSeries(
      *     _.assign(c8yBase.timeOrderFilter(), {
-     *       fragmentType: 'CustomMeasurement',
-     *       source: $routeParams.deviceId
+     *       source: $routeParams.deviceId,
+     *       dateFrom: moment().subtract(1, 'day').startOf('day').format(c8yBase.dateFullFormat),
+     *       dateTo: moment().format(c8yBase.dateFullFormat),
+     *       aggregationType: 'MINUTELY',
+     *       series: [
+     *         'c8y_Temperature.T',
+     *         'c8y_SignalStrength.rssi'
+     *       ]
      *     })
      *   ).then(function (measurements) {
      *     $scope.measurements = measurements;
@@ -164,11 +247,11 @@
      * </pre>
      */
     function listSeries(filters) {
-      var page_size_custom = PAGE_SIZE,
-        url = c8yBase.url(path + '/series'),
-        _filters = c8yBase.todayFilter(
-          _.assign({pageSize: page_size_custom, revert: true}, filters || {})
-        );
+      var pageSizeCustom = PAGE_SIZE;
+      var url = c8yBase.url(path + '/series');
+      var _filters = c8yBase.todayFilter(
+        _.assign({ pageSize: pageSizeCustom, revert: true }, filters || {})
+      );
 
       function cleanCachequest(filter, request) {
         _.remove(listSeries._cacheFilter, filter);
@@ -184,13 +267,13 @@
       }
 
       var cfg = {
-          params: _filters
-        },
-        onList = function (res) {
-          return res.data;
-        },
-        requestIndex = _.findIndex(listSeries._cacheFilter, _.partial(_.isEqual, _filters)),
-        request = requestIndex >= 0 ? listSeries._cacheRequest[requestIndex] : null;
+        params: _filters
+      };
+      var onList = function (res) {
+        return res.data;
+      };
+      var requestIndex = _.findIndex(listSeries._cacheFilter, _.partial(_.isEqual, _filters));
+      var request = requestIndex >= 0 ? listSeries._cacheRequest[requestIndex] : null;
 
       if (_filters.dateFrom) {
         _filters.dateFrom = moment(_filters.dateFrom).format(c8yBase.dateFullFormat);
@@ -222,89 +305,35 @@
 
     /**
      * @ngdoc function
-     * @name listPaged
-     * @methodOf c8y.core.service:c8yMeasurements
-     *
-     * @description
-     * Gets the paged list of measurements for given filters.
-     *
-     * @param {object} filters Object containing filters for querying measurements. Supported filters are:
-     *
-     * - **fragmentType** - `string` - Filter measurements with given fragment type.
-     * - **type** - `string` - Filter measurements with given type.
-     * - **source** - `integer` - Measurements source's id.
-     * - **dateFrom** - `string` - Limit measurements to those after given date.
-     * - **dateTo** - `string` - Limit measurements to those before given date.
-     *
-     * @returns {promise} Returns promise with the paged list of filtered measurements.<!-- See measurement object specification {@link http://docs.cumulocity.com/measurements@TODO here}.-->
-     *
-     * @example
-     * <pre>
-     *   c8yMeasurements.listPaged(
-     *     _.assign(c8yBase.timeOrderFilter(), {
-     *       type: 'CustomMeasurement',
-     *       source: $routeParams.deviceId
-     *     })
-     *   ).then(function (measurements) {
-     *     $scope.measurements = measurements;
-     *   });
-     * </pre>
-     */
-    function listPaged(filters) {
-      var defer = $q.defer(),
-        _filters = _.assign(filters || {}, {pageSize: 1000, withTotalPages: true}),
-        cancelled = false,
-        onList = function (list) {
-          var isNext = !_.isUndefined(list.paging.next) && (list.length >= _filters.pageSize);
-          defer.notify(list);
-
-          if (!isNext) {
-            defer.resolve(true);
-          }
-
-          if (cancelled) {
-            return true;
-          }
-
-          return isNext ? list.paging.next().then(onList) : true;
-        };
-
-      _.assign(defer.promise, {
-        cancel: function () {
-          cancelled = true;
-          defer.reject('canceled');
-        }
-      });
-
-      list(_filters).then(onList);
-
-      return defer.promise;
-    }
-
-    /**
-     * @ngdoc function
      * @name listSeriesPaged
      * @methodOf c8y.core.service:c8yMeasurements
      *
      * @description
-     * Gets the paged list of measurements for given series.
+     * Gets a filtered paged list of measurements in series.
      *
-     * @param {object} filters Object containing filters for querying measurements. Supported filters are:
+     * @param {object} filters Object containing filters for querying measurements. Supported properties are:
      *
-     * - **fragmentType** - `string` - Filter measurements with given fragment type.
-     * - **source** - `integer` - Measurements source's id.
+     * - **source** - `integer` - Device's id.
      * - **dateFrom** - `string` - Limit measurements to those after given date.
      * - **dateTo** - `string` - Limit measurements to those before given date.
-     * - **revert** - `boolean` - Get measurements in reverse order.
+     * - **aggregationType** - `string` - The aggregation type to apply.
+     * - **series** - `string|array` - The list of series (fragment type and series name) to filter.
      *
-     * @returns {promise} Returns promise with the paged list of filtered measurements.<!-- See measurement object specification {@link http://docs.cumulocity.com/measurements@TODO here}.-->
+     * @returns {promise} Returns a promise with the list of filtered measurements in the format described
+     * {@link http://cumulocity.com/guides/reference/measurements/#get-retrieve-all-or-some-series-of-measurements here}.
      *
      * @example
      * <pre>
      *   c8yMeasurements.listSeriesPaged(
      *     _.assign(c8yBase.timeOrderFilter(), {
-     *       fragmentType: 'CustomMeasurement',
-     *       source: $routeParams.deviceId
+     *       source: $routeParams.deviceId,
+     *       dateFrom: moment().subtract(1, 'day').startOf('day').format(c8yBase.dateFullFormat),
+     *       dateTo: moment().format(c8yBase.dateFullFormat),
+     *       aggregationType: 'MINUTELY',
+     *       series: [
+     *         'c8y_Temperature.T',
+     *         'c8y_SignalStrength.rssi'
+     *       ]
      *     })
      *   ).then(function (measurements) {
      *     $scope.measurements = measurements;
@@ -312,21 +341,24 @@
      * </pre>
      */
     function listSeriesPaged(filters) {
-      var defer = $q.defer(),
-        _filters = _.assign({revert: true}, filters || {}, {pageSize: 1000, withTotalPages: true}),
-        cancelled = false,
-        onList = function (list) {
-          defer.notify(list);
-          if (!list.paging.next) {
-            defer.resolve(true);
-          }
+      var defer = $q.defer();
+      var _filters = _.assign({ revert: true }, filters || {}, {
+        pageSize: 1000,
+        withTotalPages: true
+      });
+      var cancelled = false;
+      var onList = function (list) {
+        defer.notify(list);
+        if (!list.paging.next) {
+          defer.resolve(true);
+        }
 
-          if (cancelled) {
-            return true;
-          }
+        if (cancelled) {
+          return true;
+        }
 
-          return list.paging.next ? list.paging.next().then(onList) : true;
-        };
+        return list.paging.next ? list.paging.next().then(onList) : true;
+      };
 
       _.assign(defer.promise, {
         cancel: function () {
@@ -613,7 +645,7 @@
      * @param {date|moment|string} dateFrom Date from to list the measurements
      * @param {date|moment|string} dateTo Date to to list the measurements
      * @param {string} [aggregation=undefined] The aggregation for data 'HOURLY', 'DAILY' or undefined
-     * @return {promise} A promise than when resolved will return an object
+     * @returns {promise} A promise than when resolved will return an object
      * with properties: 'dataPoint', 'aggregation', 'dateFrom', 'dateTo' and
      * 'values' which is an array of object with the properties time, min, max
      * and 'truncated' if the data on this list is truncated
@@ -732,7 +764,7 @@
      * @description Return a function to filter incoming realtime measurements to fit a specific datapoint
      * @param  {Object} datapoint The data point to create the filter function
      * for
-     * @return {function} callback A function that when passed a measurement
+     * @returns {function} callback A function that when passed a measurement
      * will check if it fits the specific datapoint and return an object
      * formatted as listForDataPoint
      */
@@ -756,8 +788,23 @@
       };
     }
 
+    function _checkForJsonStream() {
+      var url = c8yBase.url(path);
+      var config = {
+        params: {pageSize: 1},
+        headers: {Accept: Format.stream.value},
+        silentError: true
+      };
+      if (window.c8y_testing) {
+        return $q.when();
+      }
+      return $http.get(url, config).catch(function (res) {
+        Format.stream.notAcceptable = res.status === 406;
+      });
+    }
+
     return {
-      format: format,
+      format: Format,
       list: list,
       listPaged: listPaged,
       listSeries: listSeries,

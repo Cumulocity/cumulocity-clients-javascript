@@ -51,27 +51,53 @@
      * </pre>
      */
     function getGroupItems(group) {
-      return c8yInventory.detail(group)
-        .then(c8yBase.getResData)
-        .then(getGroupItemsChildren);
+      return c8yInventory.listQuery(getGroupItemsQuery(group), {withParents: true}, true);
     }
 
-    function getGroupItemsChildren(group) {
-      return getChildrenIds(group)
-        .then(function (childrenIds) {
-          return childrenIds.length > 0 ? c8yInventory.list({ids: childrenIds.join(','), pageSize: childrenIds.length}) : $q.when([]);
-        });
+    /**
+     * @ngdoc function
+     * @name getGroupAssetsAndDevices
+     * @methodOf c8y.core.service:c8yGroups
+     *
+     * @description
+     * Gets group items excluding childAdditions
+     *
+     * @param {object} group Group managed object.
+     *
+     * @returns {promise} Returns promise with array of group items childAdditions
+     *
+     * @example
+     * <pre>
+     *   var groupId = 1;
+     *   c8yInventory.detail(groupId).then(function (res) {
+     *     return res.data;
+     *   }).then(function (group) {
+     *     return c8yGroups.getGroupAssetsAndDevices(group).then(function (groupItems) {
+     *       $scope.itemsNoAdditions = groupItems;
+     *     });
+     *   });
+     * </pre>
+     */
+    function getGroupAssetsAndDevices(group) {
+      var groupId = String(c8yBase.getId(group));
+      var rejectAddition = function (item) {
+        var additionParentsIds = _.map(
+          _.get(item, 'additionParents.references'),
+          _.property('managedObject.id')
+        );
+        return _.includes(additionParentsIds, groupId);
+      };
+      var rejectAdditions = function (items) {
+        return _.reject(items, rejectAddition);
+      };
+      return getGroupItems(group)
+        .then(rejectAdditions);
     }
 
-    function getChildrenIds(group) {
-      var childrenIds = [];
-      childrenIds = childrenIds.concat(group.childAssets.references.map(getIdFromManagedObjectReference));
-      childrenIds = childrenIds.concat(group.childDevices.references.map(getIdFromManagedObjectReference));
-      return $q.when(childrenIds);
-    }
-
-    function getIdFromManagedObjectReference(ref) {
-      return ref.managedObject.id;
+    function getGroupItemsQuery(group) {
+      return {
+        __bygroupid: c8yBase.getId(group)
+      };
     }
 
     /**
@@ -164,10 +190,10 @@
 
     return {
       getGroupItems: getGroupItems,
+      getGroupAssetsAndDevices: getGroupAssetsAndDevices,
       getGroupTypeItems: getGroupTypeItems,
       getTopLevelGroups: getTopLevelGroups,
       isGroup: isGroup
     };
   }
-
 }());

@@ -35,6 +35,18 @@
         CANCELLED: 'CANCELLED'
       },
       statusList = _.keys(status),
+      internalStatus = {
+        ACTIVE: 'ACTIVE',
+        IN_PROGRESS: 'IN_PROGRESS',
+        COMPLETED: 'COMPLETED',
+        DELETED: 'DELETED'
+      },
+      singleOpStatusMap = {
+        PENDING: [status.SCHEDULED],
+        EXECUTING: [status.EXECUTING],
+        SUCCESSFUL: [status.COMPLETED_SUCCESSFULLY],
+        FAILED: [status.COMPLETED_WITH_FAILURES, status.CANCELLED]
+      },
       style = {};
 
     style['SCHEDULED'] = {
@@ -101,7 +113,22 @@
         },
         onList = c8yBase.cleanListCallback('bulkOperations', list, _filters);
 
-      return $http.get(url, cfg).then(onList);
+      return $http.get(url, cfg)
+        .then(onList)
+        .then(_.partialRight(filterByStatus, _filters.status));
+    }
+
+    function filterByStatus(operations, statuses) {
+      var result;
+      if (_.isUndefined(statuses)) {
+        result = operations;
+      } else {
+        var list = _.isArray(statuses) ? statuses : [statuses];
+        result = _.filter(operations, function (o) {
+          return _.includes(statuses, getStatus(o));
+        });
+      }
+      return result;
     }
 
     /**
@@ -228,6 +255,33 @@
         cfg = _.cloneDeep(defaultConfig);
 
       return $http.put(url, data, cfg);
+    }
+
+    /**
+     * @ngdoc function
+     * @name canCancel
+     * @methodOf c8y.core.service:c8yDeviceBulkControl
+     *
+     * @description
+     * Checks if operation can be cancelled based on its status.
+     *
+     * @param {object} operation Device bulk operation object.
+     *
+     * @returns {boolean} Returns true if operation can be cancelled.
+     *
+     * @example
+     * <pre>
+     *   if (c8yDeviceBulkControl.canCancel(operation)) {
+     *     c8yDeviceBulkControl.cancel(operation);
+     *   }
+     * </pre>
+     */
+    function canCancel(operation) {
+      var s = operation && operation.status;
+      return _.includes([
+        internalStatus.ACTIVE,
+        internalStatus.IN_PROGRESS
+      ], s);
     }
 
     /**
@@ -367,17 +421,73 @@
       return style[status];
     }
 
+    /**
+     * @ngdoc function
+     * @name doesMatchSingleOpStatus
+     * @methodOf c8y.core.service:c8yDeviceBulkControl
+     *
+     * @description
+     * Checks if given single operation status matches the status of given bulk operation according to mapping:
+     *
+     * - **PENDING**: SCHEDULED,
+     * - **EXECUTING**: EXECUTING,
+     * - **SUCCESSFUL**: COMPLETED_SUCCESSFULLY,
+     * - **FAILED**: COMPLETED_WITH_FAILURES, CANCELLED.
+     *
+     * @param {object|string} bulkOperationOrStatus Bulk operation object or its status.
+     * @param {string} singleOpStatus Single operation status.
+     *
+     * @returns {boolean} Returns boolean indicating if the two statuses match together.
+     *
+     * @example
+     * <pre>
+     *   // will return true if bulkOperation is in SCHEDULED status:
+     *   c8yDeviceBulkControl.doesMatchSingleOpStatus(bulkOperation, 'PENDING');
+     * </pre>
+     */
+    function doesMatchSingleOpStatus(bulkOperationOrStatus, singleOpStatus) {
+      var status = _.isObjectLike(bulkOperationOrStatus) ? getStatus(bulkOperationOrStatus) : bulkOperationOrStatus;
+      var matchingStatuses = getMappedSingleOpStatus(singleOpStatus);
+      return _.includes(matchingStatuses, status);
+    }
+
+    /**
+     * @ngdoc function
+     * @name getMappedSingleOpStatus
+     * @methodOf c8y.core.service:c8yDeviceBulkControl
+     *
+     * @description
+     * Gets matching bulk operation statuses list for single operation status.
+     *
+     * @param {string} singleOpStatus Bulk operation object or its status.
+     *
+     * @returns {array} Returns an array of matching statuses.
+     *
+     * @example
+     * <pre>
+     *   // will return ['COMPLETED_WITH_FAILURES', 'CANCELLED']:
+     *   c8yDeviceBulkControl.getMappedSingleOpStatus('FAILED');
+     * </pre>
+     */
+    function getMappedSingleOpStatus(singleOpStatus) {
+      return singleOpStatusMap[singleOpStatus];
+    }
+
     return {
       list: list,
       detail: detail,
       create: create,
       save: save,
       update: update,
+      canCancel: canCancel,
       cancel: cancel,
       retryFailed: retryFailed,
+      status: status,
       statusList: statusList,
       getStatus: getStatus,
-      getStatusStyle: getStatusStyle
+      getStatusStyle: getStatusStyle,
+      doesMatchSingleOpStatus: doesMatchSingleOpStatus,
+      getMappedSingleOpStatus: getMappedSingleOpStatus
     };
   }
 })();

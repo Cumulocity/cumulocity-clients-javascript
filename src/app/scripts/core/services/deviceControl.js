@@ -157,7 +157,7 @@ function C8yDeviceControl(
    */
   function list(filters) {
     var url = c8yBase.url(path),
-       _filters = c8yBase.pageSizeNoTotalFilter(filters),
+      _filters = c8yBase.pageSizeNoTotalFilter(filters),
       cfg = {
         params: _filters
       },

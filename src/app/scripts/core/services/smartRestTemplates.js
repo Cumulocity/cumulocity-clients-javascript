@@ -1102,13 +1102,15 @@
 
     /**
      * @ngdoc function
-     * @name listAllMessages
+     * @name listAllPublishMessages
+     * @methodOf c8y.core.service:c8ySmartRestTemplates
      *
      * @description
      * Gets all the messages from all the templates in a single flat array.
      * Adds one non enumerable properties to each message:
      * - **_template** the managed object of the template the message belongs to
-     * @return {promise} A promise that resolves with the array of all the
+     *
+     * @returns {promise} A promise that resolves with the array of all the
      * available messages
      */
     function listAllPublishMessages() {

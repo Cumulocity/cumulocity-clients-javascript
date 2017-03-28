@@ -471,8 +471,6 @@
      * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
      * @param {string} channelName Subscribed channel.
      *
-     * @returns {void}
-     *
      * @example
      * <pre>
      *   var id = $scope.$id;
@@ -537,7 +535,6 @@
      *   var channel = '/operations/*';
      *   c8yRealtime.destroySubscription(id, channel);
      * </pre>
-     * @returns {void}
      */
     function destroySubscription(subscriberId, channelName) {
       removeSubscriber(subscriberId, channelName);
@@ -610,7 +607,6 @@
      *     return c8yRealtime.icon(false);
      *   };
      * </pre>
-     * @returns {void}
      */
     function icon(state) {
       return state ? 'check-circle-o' : 'circle-o';

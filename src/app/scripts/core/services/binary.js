@@ -12,11 +12,13 @@
   angular.module('c8y.core')
     .factory('c8yBinary', c8yBinary);
 
+  /* @ngInject */
   function c8yBinary(
     $q,
     $upload,
     $http,
     $rootScope,
+    $window,
     c8yBase,
     c8yInventory,
     c8yAuth,
@@ -84,8 +86,8 @@
       $rootScope.$on('authStateChange', authStateChange);
     }
 
-    function authStateChange(ev, data){
-      if(data && data.hasAuth){
+    function authStateChange(ev, data) {
+      if (data && data.hasAuth) {
         updateFileSizeLimit();
       }
     }
@@ -144,8 +146,7 @@
     function upload(binary, moConf) {
       var mo = {
         name: binary.name,
-        type: binary.type,
-        data: binary.data
+        type: binary.type
       };
       var binaryMo = _.assign(mo, moConf);
       return $upload.upload({
@@ -164,8 +165,7 @@
       return download(binary, length).then(function (xhr) {
         var contentType = xhr.getResponseHeader('Content-Type');
         var contentDisposition = xhr.getResponseHeader('Content-Disposition');
-        var responseEmpty = xhr.response.byteLength === 0;
-        var blob = responseEmpty ?
+        var blob = isLegacyBinaryObject(binary) ?
           getBlobFromLegacyBinaryObject(binary, contentType) :
           new Blob([xhr.response], {
             type: contentType
@@ -175,11 +175,15 @@
       });
     }
 
+    function isLegacyBinaryObject(binary) {
+      return binary && binary.data;
+    }
+
     function getBlobFromLegacyBinaryObject(binary, contentType, sliceSize) {
       var ct = contentType || '';
       var ss = sliceSize || 512;
 
-      var byteCharacters = atob(binary.data);
+      var byteCharacters = $window.atob(binary.data);
       var byteArrays = [];
 
       for (var offset = 0; offset < byteCharacters.length; offset += ss) {
@@ -203,15 +207,18 @@
     }
 
     function downloadAsDataUri(binary) {
-      return download(binary).then(function (xhr) {
-        var contentType = xhr.getResponseHeader('Content-Type');
-        var base64 = arrayBufferToBase64(xhr.response);
-        var responseEmpty = xhr.response.byteLength === 0;
-        var dataUri = responseEmpty ?
-          getDataUri(binary) :
-          'data:' + contentType + ';base64,' + base64;
-        return dataUri;
-      });
+      return download(binary)
+        .then(function (xhr) {
+          var contentType = xhr.getResponseHeader('Content-Type');
+          var base64 = arrayBufferToBase64(xhr.response);
+          var dataUri = isLegacyBinaryObject(binary) ?
+            getDataUri(binary) :
+            'data:' + contentType + ';base64,' + base64;
+          return dataUri;
+        })
+        .catch(function () {
+          return getDataUri(binary) || $q.reject();
+        });
     }
 
     function downloadAsText(binary) {
@@ -252,9 +259,11 @@
       };
       xhr.onprogress = function (e) {
         if (!_.isUndefined(e.loaded)) {
-          deferred.notify(
-            e.loaded / (_.isNumber(Number(length)) && length || size(binary))
-          );
+          var totalLength = _.isNumber(Number(length)) && length || size(binary);
+          if (!_.isUndefined(totalLength)) {
+            var loadedPercentage = e.loaded / totalLength;
+            deferred.notify(loadedPercentage);
+          }
         }
       };
 
@@ -384,7 +393,10 @@
      * </pre>
      */
     function size(binary) {
-      return !_.isUndefined(binary.length) ? binary.length : binary._attachments[_.keys(binary._attachments)[0]].length;
+      var binaryLength = _.get(binary, 'length');
+      var attachments = _.get(binary, '_attachments');
+      var attachmentsObj = _.get(attachments, _.first(_.keys(attachments)));
+      return _.isUndefined(binaryLength) ? _.get(attachmentsObj, 'length') : binaryLength;
     }
 
     /**
@@ -434,10 +446,12 @@
     /**
      * @ngdoc function
      * @name save
+     * @deprecated
      * @methodOf c8y.core.service:c8yBinary
      *
      * @description
      * Updates existing binary object (if `binary.id` is provided) or creates a new one in inventory.
+     * This function is deprecated. Please use c8yBinary.upload().
      *
      * @param {object} binary Binary object to store. <!--See object specification {@link http://docs.cumulocity.com/binary@TODO here}.-->
      *
@@ -499,10 +513,12 @@
     /**
      * @ngdoc function
      * @name remove
+     * @deprecated
      * @methodOf c8y.core.service:c8yBinary
      *
      * @description
      * Removes binary object from inventory.
+     * This function is deprecated. Please use c8yBinary.removeBinary().
      *
      * @param {object|integer} binary Binary object or binary's id.
      *
@@ -521,10 +537,12 @@
     /**
      * @ngdoc function
      * @name getDataUri
+     * @deprecated
      * @methodOf c8y.core.service:c8yBinary
      *
      * @description
      * Gets Data URI for binary object.
+     * This function is deprecated. Please use c8yBinary.downloadAsDataUri().
      *
      * @param {object} binary Binary object.
      *
@@ -544,15 +562,79 @@
      * </pre>
      */
     function getDataUri(binary) {
-      if (binary && (binary.type || binary.dataType) && binary.data) {
-        return 'data:' + (binary.type || binary.dataType) + ';base64,' + binary.data;
+      var type = _.get(binary, 'type') || _.get(binary, 'dataType');
+      var data = _.get(binary, 'data');
+      var result = '';
+      if (type && data) {
+        try {
+          $window.atob(data);
+        } catch (e) {
+          data = $window.btoa(data);
+        }
+        result = 'data:' + type + ';base64,' + data;
       }
-      return '';
+      return result;
     }
 
+    /**
+     * @ngdoc function
+     * @name readDataUri
+     * @methodOf c8y.core.service:c8yBinary
+     *
+     * @description
+     * Gets Data URI for Blob/File object.
+     *
+     * @param {Blob} binary Binary object.
+     *
+     * @returns {string} Returns Data URI for binary object.
+     *
+     * @example
+     * Controller:
+     * <pre>
+     *     c8yBinary.readDataUri(binary).then(function(dataUri){
+     *       $scope.dataUri = dataUri;
+     *     });
+     * </pre>
+     * Template:
+     * <pre>
+     *   <img ng-src="{{dataUri}}" />
+     * </pre>
+     */
+    function readDataUri(binary) {
+      var reader = new FileReader();
+      var deferred = $q.defer();
+
+      reader.addEventListener('load', function () {
+        deferred.resolve(reader.result);
+      }, false);
+
+      reader.addEventListener('error', function (evt) {
+        deferred.reject(evt);
+      });
+
+      if (binary) {
+        reader.readAsDataURL(binary);
+      }
+      return deferred.promise;
+    }
+
+    /**
+     * @ngdoc function
+     * @name getText
+     * @deprecated
+     * @methodOf c8y.core.service:c8yBinary
+     *
+     * @description
+     * Gets text content from binary
+     * This function is deprecated. Please use c8yBinary.decodeDataUri().
+     *
+     * @param {object} binary binary MO object.
+     *
+     * @returns {string} return text content extracted from binary object.
+     */
     function getText(binary) {
       if (binary && binary.data) {
-        return atob(binary.data);
+        return $window.atob(binary.data);
       }
       return '';
     }
@@ -580,6 +662,30 @@
       return matches && (matches[1] || matches[2]);
     }
 
+    /**
+     * @ngdoc function
+     * @name decodeDataUri
+     * @methodOf c8y.core.service:c8yBinary
+     *
+     * @description
+     * Decode Data URI string (retrieved from either c8yBinary.downloadAsDataUri()
+     * or c8yBinary.readDataUri()) to raw file content.
+     * Should be used for text based files like SVG or CSV.
+     *
+     * @param {string} dataUri Data URI for binary object:
+     *    var data = "data:image/svg;base64,YWJj..YWJj";
+     *
+     * @returns {string} Returns content of dataUri.
+     *
+     * @example
+     * <pre>
+     *   var xml = c8yBinary.downloadAsDataUri(binary).then(c8yBinary.decodeDataUri);
+     * </pre>
+     */
+    function decodeDataUri(dataUri) {
+      return $window.atob(_.last(dataUri.split(',')));
+    }
+
     var output = _.assign(_.cloneDeep(c8yInventory), {
       BYTES_SIZE_LIMIT: BYTES_SIZE_LIMIT,
       list: list,
@@ -594,6 +700,8 @@
       isImage: isImage,
       hasValidSize: hasValidSize,
       getIdFromUrl: getIdFromUrl,
+      readDataUri: readDataUri,
+      decodeDataUri: decodeDataUri,
 
       // old functions to check: save, detail, remove, getDataUri
       save: save, // -> upload

@@ -55,7 +55,7 @@
      * Loads an object from browser's local storage for given key.
      *
      * @param  {string} key Key for local storage entry
-     * @return {object} Object that is loaded from local storage.
+     * @returns {object} Object that is loaded from local storage.
      *                  If there is no such object or string in local storage
      *                  is an invalid JSON, returns undefined.
      */

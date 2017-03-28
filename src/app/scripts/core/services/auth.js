@@ -8,17 +8,18 @@
  * @description
  * This service handles authentication.
  */
-(function() {
+(function () {
   'use strict';
 
   angular.module('c8y.core')
-    .factory('c8yAuth',  c8yAuth)
+    .factory('c8yAuth', c8yAuth)
     .config(['$httpProvider', config]);
 
   function config($httpProvider) {
-    //c8yAuth factory export the 'request' method so it behaves like an interceptor
+    // c8yAuth factory export the 'request' method so it behaves like an interceptor
     $httpProvider.interceptors.push('c8yAuth');
   }
+
   /* @ngInject */
   function c8yAuth(
     $location,
@@ -30,7 +31,7 @@
     $timeout,
     info
   ) {
-    //var token = info.token,
+    // var token = info.token,
     var TOKEN_KEY = '_tcy8';
     var TFATOKEN_KEY = 'TFAToken';
     var HEADER_APPKEY = 'X-Cumulocity-Application-Key';
@@ -63,8 +64,8 @@
     }
 
     function decodeToken(token) {
-      var decoded = atob(token),
-        split = decoded.match(/(([^\/]*)\/)?([^\/:]+):(.+)/);
+      var decoded = decodeURIComponent(escape(atob(token)));
+      var split = decoded.match(/(([^\/]*)\/)?([^\/:]+):(.+)/);
 
       return {
         tenant: split[2],
@@ -184,7 +185,7 @@
         info.logout();
       }
     }
-    
+
     /**
      * @ngdoc function
      * @name responseError
@@ -209,7 +210,7 @@
       return $q.reject(rejection);
     }
 
-    //Make sure we don't send the auth token to another server.
+    // Make sure we don't send the auth token to another server.
     function isApiDomain(url) {
       // if url is not falsy, allow it.
       // empty string is a relative path to current domain
@@ -242,7 +243,7 @@
       lastTriedAuthToken = token;
       var url = c8yBase.url('user/currentUser?auth');
       if (window.c8y_testing) {
-        onSetToken(token);
+        return $q.when(onSetToken(token));
       }
       var httpConfig = {
         url: url,
@@ -557,7 +558,7 @@
       mustEnforcePasswordStrength: mustEnforcePasswordStrength,
       getPasswordMinGreenLength: getPasswordMinGreenLength
     };
-    //Deal with circular dependencies
+    // Deal with circular dependencies
     out.initializing = $q.when().then(function () {
       $http = $injector.get('$http');
       c8yBase = $injector.get('c8yBase');

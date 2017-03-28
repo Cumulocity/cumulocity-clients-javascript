@@ -9,22 +9,13 @@
  * @description
  * This service allows for managing users.
  */
-(function() {
+(function () {
   'use strict';
 
   angular.module('c8y.core')
-    .factory('c8yUser', [
-      '$http',
-      '$q',
-      '$timeout',
-      '$rootScope',
-      '$routeParams',
-      'c8yBase',
-      'c8yAuth',
-      'c8ySettings',
-      c8yUser
-    ]);
+    .factory('c8yUser', c8yUser);
 
+  /* @ngInject */
   function c8yUser(
     $http,
     $q,
@@ -35,7 +26,6 @@
     c8yAuth,
     c8ySettings
   ) {
-
     var path = 'user/{tenant}/users';
     var currentUserPath = 'user/currentUser';
     var currentUser = null;
@@ -79,8 +69,8 @@
     }
 
     function getTenantFromSelf(url) {
-      var FIND_TENANT = /\/user\/(\w+)\//,
-        match = url.match(FIND_TENANT);
+      var FIND_TENANT = /\/user\/(\w+)\//;
+      var match = url.match(FIND_TENANT);
 
       if (match.length < 2) {
         throw(new Error('Cannot find tenant on user self URL'));
@@ -269,8 +259,8 @@
      * </pre>
      */
     function create(user) {
-      var data = clean(user),
-        cfg = _.cloneDeep(config);
+      var data = clean(user);
+      var cfg = _.cloneDeep(config);
       return buildUsersUrl().then(function (url) {
         return $http.post(url, data, cfg);
       });
@@ -329,10 +319,67 @@
     function update(user, isCurrent) {
       var data = clean(user);
       var cfg = _.cloneDeep(config);
-      var url = isCurrent ? buildCurrentUserUrl() : buildUserUrl(user);
-      return url.then(function(url) {
-        return $http.put(url, data, cfg);
-      });
+      var urlPromise = isCurrent ? buildCurrentUserUrl() : buildUserUrl(user);
+      return urlPromise
+        .then(function (url) {
+          return $http.put(url, data, cfg);
+        })
+        .then(function (res) {
+          var output = res;
+          var _user = res.data;
+          var promises = [];
+
+          if (!_.isUndefined(user.owner) && user.owner !== _user.owner) {
+            promises.push(
+              user.owner === null ?
+                removeOwner(_user) :
+                updateOwner(user, urlPromise)
+            );
+          }
+
+          if (!_.isUndefined(user.delegatedBy) && user.delegatedBy !== _user.delegatedBy) {
+            promises.push(
+              user.delegatedBy === null ?
+                removeDelegatedBy(_user) :
+                updateDelegatedBy(user, urlPromise)
+            );
+          }
+
+          if (promises.length) {
+            output = $q.all(promises)
+              .then(_.partial(detail, user));
+          }
+
+          return output;
+        });
+    }
+
+    function updateOwner(user, urlPromise) {
+      var data = {owner: user.owner};
+      var _headers = {
+        'Content-Type': c8yBase.mimeType('userOwnerReference')
+      };
+      return urlPromise
+        .then(function (url) {
+          return url + '/owner';
+        })
+        .then(function (url) {
+          return $http.put(url, data, {headers: _headers});
+        });
+    }
+
+    function updateDelegatedBy(user, urlPromise) {
+      var data = {delegatedBy: user.delegatedBy};
+      var _headers = {
+        'Content-Type': c8yBase.mimeType('userDelegatedByReference')
+      };
+      return urlPromise
+        .then(function (url) {
+          return url + '/delegatedby';
+        })
+        .then(function (url) {
+          return $http.put(url, data, {headers: _headers});
+        });
     }
 
     /**
@@ -361,22 +408,41 @@
      */
     function save(user) {
       var action = user.id ? update(user) : create(user);
-      action.then(function() {
+      action.then(function (res) {
         updateToken(user);
+        return res;
       });
       return action;
     }
 
+    function removeOwner(user) {
+      return buildUserUrl(user)
+        .then(function (_url) {
+          var url = _url + '/owner';
+          return $http.delete(url);
+        })
+        .then(_.partial(detail, user));
+    }
+
+    function removeDelegatedBy(user) {
+      return buildUserUrl(user)
+        .then(function (_url) {
+          var url = _url + '/delegatedby';
+          return $http.delete(url);
+        })
+        .then(_.partial(detail, user));
+    }
+
     function saveCurrent(user) {
       return update(user, true)
-        .then(function() {
+        .then(function () {
           updateToken(user);
         });
     }
 
     function updateToken(user) {
-      checkIfCurrent(user).then(function(isCurrent) {
-        if(isCurrent) {
+      checkIfCurrent(user).then(function (isCurrent) {
+        if (isCurrent) {
           c8yAuth.updatePassword(getPassword(user));
         }
       });
@@ -384,7 +450,7 @@
 
     function checkIfCurrent(user) {
       var userId = user.id || user;
-      return current().then(function(currentUser) {
+      return current().then(function (currentUser) {
         return $q.when(currentUser.id === userId);
       });
     }
@@ -505,18 +571,16 @@
              isTfaAvailable() :
              $q.when(user)
               .then(function (userDetails) {
-                 var tfaActive = userDetails.twoFactorAuthenticationEnabled;
+                var tfaActive = userDetails.twoFactorAuthenticationEnabled;
 
-                 return isTfaReadonly(user)
-                   .then(function (enforced) {
-
-                     if (enforced) {
-                       tfaActive = true;
-                     }
-
-                     return tfaActive;
-                   });
-               });
+                return isTfaReadonly(user)
+                  .then(function (enforced) {
+                    if (enforced) {
+                      tfaActive = true;
+                    }
+                    return tfaActive;
+                  });
+              });
     }
 
     /*
@@ -676,6 +740,117 @@
         });
     }
 
+    function inventoryRolesUrl(userUrl) {
+      return userUrl + '/roles/inventory';
+    }
+
+    /**
+     * @ngdoc function
+     * @name listInventoryRoles
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description List the inventory roles applied to a specific user
+     * @param {object} user User object. If omitted the current user is used
+     * @returns {promise} A promise that when resolved returns the array of inventory roles
+     */
+    function listInventoryRoles(user) {
+      var userPromise = user ? $q.when(user) : current();
+      var doCall = function (url) {
+        return $http.get(url);
+      };
+      return userPromise
+        .then(buildUserUrl)
+        .then(inventoryRolesUrl)
+        .then(doCall);
+    }
+
+    /**
+     * @ngdoc function
+     * @name assignInventoryRoles
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description List the inventory roles applied to a specific user in the context of a specific managed object.
+     * @param {object} user User object. If omitted the current user is used
+     * @param {string} manageObjectId The ID of managed object to which assign the roles to.
+     * @param {array} roleIds An array of objects with id property defined corresponding to each role.
+     * @returns {promise} A promise that when resolved returns the $http response object
+     */
+    function assignInventoryRoles(user, manageObjectId, roleIds) {
+      var userPromise = user ? $q.when(user) : current();
+      var data = {
+        managedObject: manageObjectId,
+        roles: _.map(roleIds, function (r) {
+          return _.pick(r, 'id');
+        })
+      };
+      var doCall = function (url) {
+        return $http.post(url, data);
+      };
+      return userPromise
+        .then(buildUserUrl)
+        .then(inventoryRolesUrl)
+        .then(doCall);
+    }
+
+    /**
+     * @ngdoc function
+     * @name updateInventoryRoles
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description Update the roles in a specific existing assignment
+     * @param {object} user User object. If omitted the current user is used
+     * @param {string} assignmentId The id of the assignment object
+     * @param {array} roleIds An array of objects with id property defined corresponding to each role.
+     * @returns {promise} Returns a $http promise
+     */
+    function updateInventoryRoles(user, assignmentId, roleIds) {
+      var userPromise = user ? $q.when(user) : current();
+      var data = {
+        roles: _.map(roleIds, function (r) {
+          return _.pick(r, 'id');
+        })
+      };
+      var doCall = function (url) {
+        var detailUrl = url + '/' + assignmentId;
+        return $http.put(detailUrl, data);
+      };
+      return userPromise
+        .then(buildUserUrl)
+        .then(inventoryRolesUrl)
+        .then(doCall);
+    }
+
+    /**
+     * @ngdoc function
+     * @name removeInventoryRoles
+     * @methodOf c8y.core.service:c8yUser
+     *
+     * @description Removes the inventory role assignment from the user
+     * @param {object} user User object. If omitted the current user is used
+     * @param {string} assignmentId The id of the assignment object
+     * @returns {promise} A promise that when resolved the $http response
+     */
+    function removeInventoryRoles(user, assignmentId) {
+      var userPromise = user ? $q.when(user) : current();
+      var doCall = function (url) {
+        var detailUrl = url + '/' + assignmentId;
+        return $http.delete(detailUrl);
+      };
+      return userPromise
+        .then(buildUserUrl)
+        .then(inventoryRolesUrl)
+        .then(doCall);
+    }
+
+    function delegateTo(_user) {
+      var user = {id: _user.id};
+      return current()
+        .then(function (_currentUser) {
+          user.delegatedBy = _currentUser.id;
+          return update(user);
+        });
+    }
+
     $rootScope.$on('authStateChange', function (evt, data) {
       if (!data.hasAuth) {
         currentUser = null;
@@ -706,7 +881,13 @@
       isTfaActive: isTfaActive,
       isTfaReadonly: isTfaReadonly,
       getHeaders: getHeaders,
-      activateSupportUser: activateSupportUser
+      activateSupportUser: activateSupportUser,
+      delegateTo: delegateTo,
+
+      listInventoryRoles: listInventoryRoles,
+      assignInventoryRoles: assignInventoryRoles,
+      updateInventoryRoles: updateInventoryRoles,
+      removeInventoryRoles: removeInventoryRoles
     };
   }
 }());

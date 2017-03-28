@@ -244,7 +244,7 @@
      * Creates a counter instance. Supported filters are source, type and date.
      *
      * @param  {object} filter Object that is used to filter alarms to be counted.
-     * @return {Counter} Returns a c8yCounter.Counter instance.
+     * @returns {Counter} Returns a c8yCounter.Counter instance.
      */
 
     function createCounter(filter) {

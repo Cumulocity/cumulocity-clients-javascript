@@ -2,7 +2,7 @@
   'use strict';
 
   angular.module('c8y.core')
-    .factory('c8yPermissions', ['$routeParams', '$q', '$http', 'c8yBase', 'c8yUser', c8yPermissions]);
+    .factory('c8yPermissions', c8yPermissions);
 
   /**
    * @ngdoc service
@@ -13,8 +13,34 @@
    * @description
    * This service handles permissions checking.
    */
-  function c8yPermissions($routeParams, $q, $http, c8yBase, c8yUser) {
+
+  /* @ngInject */
+  function c8yPermissions(
+    $routeParams,
+    $q,
+    $http,
+    c8yBase,
+    c8yUser,
+    c8yUserGroup,
+    c8yInventory,
+    gettext
+  ) {
     var moPermissionsPath = 'user/devicePermissions';
+    var PERMISSION_SCOPES = c8yBase.createEnum([
+      {name: 'ALARM', value: 'ALARM', label: gettext('Alarms')},
+      {name: 'AUDIT', value: 'AUDIT', label: gettext('Audits')},
+      {name: 'EVENT', value: 'EVENT', label: gettext('Events')},
+      {name: 'MANAGED_OBJECT', value: 'MANAGED_OBJECT', label: gettext('Inventory')},
+      {name: 'MEASUREMENT', value: 'MEASUREMENT', label: gettext('Measurements')},
+      {name: 'OPERATION', value: 'OPERATION', label: gettext('Device control')},
+      {name: 'SUPPORT', value: 'SUPPORT', label: gettext('Support')},
+      {name: 'ALL', value: '*', label: gettext('Full access')}
+    ]);
+    var PERMISSIONS = c8yBase.createEnum([
+      {name: 'READ', value: 'READ', label: gettext('Read')},
+      {name: 'CHANGE', value: 'ADMIN', label: gettext('Change')},
+      {name: 'ALL', value: '*', label: gettext('All')}
+    ]);
 
     /**
      * @ngdoc function
@@ -126,11 +152,11 @@
     }
 
     function doesSingleDevicePermissionMatch(scope, type, permission, devicePermission) {
-      var result = false,
-        parts = devicePermission.split(':'),
-        scopePart = parts[0],
-        typePart = parts[1],
-        permissionPart = parts[2];
+      var result = false;
+      var parts = devicePermission.split(':');
+      var scopePart = parts[0];
+      var typePart = parts[1];
+      var permissionPart = parts[2];
 
       if (doesDevicePermissionPartMatch(scopePart, scope) &&
           doesDevicePermissionPartMatch(typePart, type) &&
@@ -168,8 +194,8 @@
      */
     function hasAnyRole(roles, user) {
       var userPromise = user ? $q.when(user) : c8yUser.current();
-      return userPromise.then(function (user) {
-        return _.some(roles, _.partial(hasRole, user));
+      return userPromise.then(function (u) {
+        return _.some(roles, _.partial(hasRole, u));
       });
     }
 
@@ -221,8 +247,8 @@
      */
     function hasAllRoles(roles, user) {
       var userPromise = user ? $q.when(user) : c8yUser.current();
-      return userPromise.then(function (user) {
-        return _.every(roles, _.partial(hasRole, user));
+      return userPromise.then(function (u) {
+        return _.every(roles, _.partial(hasRole, u));
       });
     }
 
@@ -279,19 +305,55 @@
     }
 
     function canReadMO(mo, user) {
-      var moId = mo.id || mo,
-        userPromise = user ? $q.when(user) : c8yUser.current();
+      var moId = mo.id || mo;
+      var useCurrentUser = !user;
+      var userPromise = useCurrentUser ? c8yUser.current() : $q.when(user);
+      var checkDevicePermission = function (_user) {
+        return function (result) {
+          return result ||
+            hasDevicePermission(_user, moId, 'MANAGED_OBJECT', '*', 'READ');
+        };
+      };
+      var checkOwnership = function (_user) {
+        return function (result) {
+          return result || c8yInventory.isOwnerCached(mo, _user);
+        };
+      };
+      var checkWithRequest = function (result) {
+        return result ||
+          checkAccessWithRequest(moId, 'read');
+      };
 
-      return userPromise.then(function (user) {
-        return hasAnyRole(['ROLE_INVENTORY_READ'], user)
-          .then(function (result) {
-            if (!result) {
-              return hasDevicePermission(user, moId, 'MANAGED_OBJECT', '*', 'READ');
-            } else {
-              return result;
-            }
-          });
+      return userPromise.then(function (_user) {
+        return hasAnyRole(['ROLE_INVENTORY_READ'], _user)
+          .then(checkDevicePermission(_user))
+          .then(checkOwnership(_user))
+          // This check only makes sense if we are checking the current user
+          .then(useCurrentUser ? checkWithRequest : _.identity);
       });
+    }
+
+    var checkAccessWithRequest = _.memoize(_checkAccessWithRequest, function (id, mode) {
+      return id + acccessModeToHttpMethod(mode);
+    });
+
+    function acccessModeToHttpMethod(mode) {
+      return  mode === 'admin' ? 'PUT' : 'HEAD';
+    }
+
+    function _checkAccessWithRequest(id, mode) {
+      var url = c8yBase.url('inventory/managedObjects/' + id);
+      var method = acccessModeToHttpMethod(mode);
+      return $http({
+        method: method,
+        data: method === 'PUT' ? {} : undefined,
+        headers: {
+          'content-type': 'application/json',
+          accept: undefined
+        },
+        silentError: true,
+        url: url
+      }).then(_.constant(true), _.constant(false));
     }
 
     /**
@@ -350,18 +412,29 @@
     }
 
     function canAdminMO(mo, user) {
-      var moId = mo.id || mo,
-        userPromise = user ? $q.when(user) : c8yUser.current();
+      var moId = mo.id || mo;
+      var useCurrentUser = !user;
+      var userPromise = useCurrentUser ? c8yUser.current() : $q.when(user);
+      var checkDevicePermission = function (_user) {
+        return function (result) {
+          return result || hasDevicePermission(_user, moId, 'MANAGED_OBJECT', '*', 'ADMIN');
+        };
+      };
+      var checkOwnership = function (_user) {
+        return function (result) {
+          return result || c8yInventory.isOwnerCached(mo, _user);
+        };
+      };
+      var checkWithRequest = function (result) {
+        return result || checkAccessWithRequest(moId, 'admin');
+      };
 
-      return userPromise.then(function (user) {
-        return hasAnyRole(['ROLE_INVENTORY_ADMIN'], user)
-          .then(function (result) {
-            if (!result) {
-              return hasDevicePermission(user, moId, 'MANAGED_OBJECT', '*', 'ADMIN');
-            } else {
-              return result;
-            }
-          });
+      return userPromise.then(function (_user) {
+        return hasAnyRole(['ROLE_INVENTORY_ADMIN'], _user)
+          .then(checkDevicePermission(_user))
+          .then(checkOwnership(_user))
+          // This check only makes sense if we are checking the current user
+          .then(useCurrentUser ? checkWithRequest : _.identity);
       });
     }
 
@@ -440,11 +513,16 @@
 
     function resolveMOs(mos) {
       return _.filter(_.map(mos, function (mo) {
-        if (_.isString(mo) && /^:/.test(mo)) {
-          mo = $routeParams[mo.substr(1, mo.length - 1)];
-        }
-        return mo;
+        return isRouteParam(mo) ? getRouteParam(mo) : mo;
       }), _.identity);
+    }
+
+    function isRouteParam(str) {
+      return _.isString(str) && /^:/.test(str);
+    }
+
+    function getRouteParam(str) {
+      return $routeParams[str.replace(/^:/, '')];
     }
 
     /**
@@ -483,11 +561,7 @@
 
     function booleanPromiseToRejectablePromise(promise) {
       return promise.then(function (result) {
-        if (result) {
-          return $q.when(result);
-        } else {
-          return $q.reject(result);
-        }
+        return result ? $q.when(result) : $q.reject(result);
       });
     }
 
@@ -536,8 +610,8 @@
      * </pre>
      */
     function getMOPermissions(mo) {
-      var moId = mo.id || mo,
-        url = c8yBase.url(moPermissionsPath + '/' + moId);
+      var moId = mo.id || mo;
+      var url = c8yBase.url(moPermissionsPath + '/' + moId);
 
       if (_.isObjectLike(moId)) {
         return $q.when({
@@ -596,26 +670,45 @@
 
     /**
      * @ngdoc function
-     * @name getMOPermissions
+     * @name setMOPermissions
      * @methodOf c8y.core.service:c8yPermissions
      *
      * @description
-     * Gets users and groups that have specific permissions for given managed object.
+     * Sets group and user permissions on given managed object.
      *
      * @param {integer|object} mo Managed object or id.
+     * @param {object} permissions Object with permissions to set.
      *
-     * @returns {promise} Returns $http promise with the list of users and groups with permissions.
+     * @returns {promise} Returns $http promise.
      *
      * @example
      * <pre>
      *   var moId = 1;
-     *   $scope.permissions = c8yPermissions.getMOPermissions(moId);
+     *   var permissions = {
+     *     groups: [
+     *       {
+     *         group: {id: 1},
+     *         scope: 'MANAGED_OBJECT',
+     *         type: '*',
+     *         access: 'READ'
+     *       }
+     *     ],
+     *     users: [
+     *       {
+     *         userName: 'test-user',
+     *         scope: 'MANAGED_OBJECT',
+     *         type: '*',
+     *         access: 'READ'
+     *       }
+     *     ]
+     *   };
+     *   c8yPermissions.setMOPermissions(moId, permissions);
      * </pre>
      */
     function setMOPermissions(mo, permissions) {
-      var moId = mo.id || mo,
-        url = c8yBase.url(moPermissionsPath + '/' + moId),
-        data = parsePermissions(moId, permissions);
+      var moId = mo.id || mo;
+      var url = c8yBase.url(moPermissionsPath + '/' + moId);
+      var data = parsePermissions(moId, permissions);
 
       return $http.put(url, data);
     }
@@ -674,6 +767,41 @@
       return ['READ', 'ADMIN', '*'];
     }
 
+    /**
+     * @ngdoc function
+     * @name listGlobal
+     * @methodOf c8y.core.service:c8yPermissions
+     *
+     * @description
+     * Gets the list of permissions from the server.
+     * Previously called roles
+     *
+     * @returns {promise} resolves a list of objects with the properties
+     *   - id {string} permission unique string id (ex.: ROLE_USER_MANAGEMENT_READ)
+     *   - category {string} id string without the ROLE_ prefix and the substring after the last underscore
+     *   - access {string} substring from the id string after the last underscore
+     */
+    function listGlobal() {
+      return c8yUserGroup.listRoles()
+        .then(convertServerPermissionsToUI);
+    }
+
+    function convertServerPermissionsToUI(permissions) {
+      var PERMISSION_MATCH = /ROLE_(.+)_(\w+$)/;
+
+      return _.map(permissions, function (permission) {
+        var matches = permission.id.match(PERMISSION_MATCH);
+        var category = matches[1];
+        var access = matches[2];
+
+        return {
+          id: permission.id,
+          category: category,
+          access: access
+        };
+      });
+    }
+
     return {
       hasRole: hasRole,
       hasDevicePermission: hasDevicePermission,
@@ -689,7 +817,11 @@
       mustBeAllowed: mustBeAllowed,
       getMOPermissions: getMOPermissions,
       setMOPermissions: setMOPermissions,
-      getAccessTypes: getAccessTypes
+      getAccessTypes: getAccessTypes,
+
+      listGlobal: listGlobal,
+      SCOPES: PERMISSION_SCOPES,
+      ACCESS_TYPES: PERMISSIONS
     };
   }
 })();

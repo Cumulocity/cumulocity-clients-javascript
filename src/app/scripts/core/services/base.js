@@ -553,11 +553,7 @@
      * </pre>
      */
     function cleanFields(obj, fields) {
-      var _obj = _.cloneDeep(obj);
-      fields.forEach(function (field) {
-        delete _obj[field];
-      });
-      return _obj;
+      return _.omit(obj, fields);
     }
 
     /**
@@ -820,7 +816,7 @@
      * @param {object} mo - Object to be decorated
      * @param {string} [key=id] - Key to store the id on the object
      *
-     * @return {object} Returns the decorated object that was passed as a first parameter
+     * @returns {object} Returns the decorated object that was passed as a first parameter
      */
     function createLocalId(mo, key) {
       key = key || 'id';
@@ -844,7 +840,7 @@
      * From a reference object extracts an id for a server side object
      *
      * @param {object|string|number} refId - Object with id property, number or numeric string
-     * @return {string} The id for the object
+     * @returns {string} The id for the object
      */
     function getId(refId) {
       var id;

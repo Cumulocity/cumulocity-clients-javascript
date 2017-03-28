@@ -76,7 +76,8 @@ function C8yAudits($http, c8yBase, KeysMixin, gettext) {
     'Alarm': gettext('Alarm'),
     'Operation': gettext('Operation'),
     'SmartRule': gettext('Smart Rule'),
-    'CepModule': gettext('Event processing')
+    'CepModule': gettext('Event processing'),
+    'Tenant': gettext('Tenant')
   };
 
   this.reservedKeys = _reservedKeys;
