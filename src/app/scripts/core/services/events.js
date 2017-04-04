@@ -47,9 +47,8 @@
      * - **source**,
      * - **text**,
      * - **time**,
-     * - **type**.
-     *
-     * <!--For detailed description of each event's field see specification {@link http://docs.cumulocity.com/events@TODO here}.-->
+     * - **type**,
+     * - **c8y_IsBinary**.
      *
      * @example
      * <pre>
@@ -63,7 +62,8 @@
       'source',
       'text',
       'time',
-      'type'
+      'type',
+      'c8y_IsBinary'
     ];
 
     this.standardKeys = {

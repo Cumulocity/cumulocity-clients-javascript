@@ -22,58 +22,59 @@
     c8yBase,
     c8yInventory,
     c8yAuth,
-    c8ySettings
+    c8ySettings,
+    c8yBinaryCommon
   ) {
-    var path = 'inventory/binaries',
-      managedObjectsPath = 'inventory/managedObjects',
-      BYTES_SIZE_LIMIT = 52428800,
-      fileSizeLimitConf = {
-        category: 'files',
-        key: 'max.size'
+    var path = 'inventory/binaries';
+    var managedObjectsPath = 'inventory/managedObjects';
+    var BYTES_SIZE_LIMIT = 52428800;
+    var fileSizeLimitConf = {
+      category: 'files',
+      key: 'max.size'
+    };
+    var fileNameRegexp = /(?:\.([^.]+))?$/;
+    var fileTypeIconsMap = {
+      archive: {
+        mimes: [],
+        exts: ['7z', 'apk', 'cab', 'gz', 'iso', 'jar', 'rar', 'tar', 'zip']
       },
-      fileNameRegexp = /(?:\.([^.]+))?$/,
-      fileTypeIconsMap = {
-        archive: {
-          mimes: [],
-          exts: ['7z', 'apk', 'cab', 'gz', 'iso', 'jar', 'rar', 'tar', 'zip']
-        },
-        audio: {
-          mimes: [],
-          exts: ['3gp', 'aiff', 'aac', 'amr', 'm4a', 'm4p', 'mp3', 'oga', 'ogg', 'raw', 'wav', 'wma']
-        },
-        code: {
-          mimes: [],
-          exts: ['aspx', 'exe', 'htm', 'html', 'jad', 'js', 'json', 'jsp', 'php', 'xml']
-        },
-        excel: {
-          mimes: [],
-          exts: ['xls', 'xlsx']
-        },
-        image: {
-          mimes: [],
-          exts: ['bmp', 'gif', 'jpeg', 'jpg', 'png', 'tiff']
-        },
-        pdf: {
-          mimes: [],
-          exts: ['pdf']
-        },
-        powerpoint: {
-          mimes: [],
-          exts: ['ppt', 'pptx']
-        },
-        text: {
-          mimes: [],
-          exts: ['txt']
-        },
-        video: {
-          mimes: [],
-          exts: ['3gp', 'asf', 'avi', 'flv', 'mov', 'mp4', 'ogv', 'qt', 'rm', 'rmvb', 'wmv']
-        },
-        word: {
-          mimes: [],
-          exts: ['doc', 'docx']
-        }
-      };
+      audio: {
+        mimes: [],
+        exts: ['3gp', 'aiff', 'aac', 'amr', 'm4a', 'm4p', 'mp3', 'oga', 'ogg', 'raw', 'wav', 'wma']
+      },
+      code: {
+        mimes: [],
+        exts: ['aspx', 'exe', 'htm', 'html', 'jad', 'js', 'json', 'jsp', 'php', 'xml']
+      },
+      excel: {
+        mimes: [],
+        exts: ['xls', 'xlsx']
+      },
+      image: {
+        mimes: [],
+        exts: ['bmp', 'gif', 'jpeg', 'jpg', 'png', 'tiff', 'svg']
+      },
+      pdf: {
+        mimes: [],
+        exts: ['pdf']
+      },
+      powerpoint: {
+        mimes: [],
+        exts: ['ppt', 'pptx']
+      },
+      text: {
+        mimes: [],
+        exts: ['txt']
+      },
+      video: {
+        mimes: [],
+        exts: ['3gp', 'asf', 'avi', 'flv', 'mov', 'mp4', 'ogv', 'qt', 'rm', 'rmvb', 'wmv']
+      },
+      word: {
+        mimes: [],
+        exts: ['doc', 'docx']
+      }
+    };
 
     function updateFileSizeLimit() {
       c8ySettings.getSystemOptionValue(fileSizeLimitConf, BYTES_SIZE_LIMIT).then(function (value) {
@@ -132,13 +133,13 @@
      * </pre>
      */
     function list(filters) {
-      var url = c8yBase.url(path),
-        _filters = c8yBase.pageSizeFilter(filters),
-        cfg = {
-          params: _filters
-        },
-        blindPaging = true,
-        onList = c8yBase.cleanListCallback('managedObjects', list, _filters, blindPaging);
+      var url = c8yBase.url(path);
+      var _filters = c8yBase.pageSizeFilter(filters);
+      var cfg = {
+        params: _filters
+      };
+      var blindPaging = true;
+      var onList = c8yBase.cleanListCallback('managedObjects', list, _filters, blindPaging);
 
       return $http.get(url, cfg).then(onList);
     }
@@ -149,20 +150,19 @@
         type: binary.type
       };
       var binaryMo = _.assign(mo, moConf);
-      return $upload.upload({
+
+      return c8yBinaryCommon.upload(binary, {
         url: c8yBase.url(path),
-        method: 'POST',
         headers: c8yBase.contentHeaders('managedObject', 'managedObject'),
         data: {
-          object: binaryMo,
-          filesize: binary.size
-        },
-        file: binary
+          object: binaryMo
+        }
       });
     }
 
     function downloadAndSaveAs(binary, length) {
-      return download(binary, length).then(function (xhr) {
+      var url = buildFileUrl(binary);
+      return c8yBinaryCommon.download(binary, url, length).then(function (xhr) {
         var contentType = xhr.getResponseHeader('Content-Type');
         var contentDisposition = xhr.getResponseHeader('Content-Disposition');
         var blob = isLegacyBinaryObject(binary) ?
@@ -171,7 +171,7 @@
             type: contentType
           });
 
-        saveAs(blob, getFilenameFromContentDisposition(contentDisposition));
+        saveAs(blob, c8yBinaryCommon.getFilenameFromContentDisposition(contentDisposition));
       });
     }
 
@@ -199,18 +199,17 @@
         byteArrays.push(byteArray);
       }
 
-      return new Blob(byteArrays, {type: ct});
-    }
-
-    function getFilenameFromContentDisposition(contentDisposition) {
-      return /filename="(.*)"/.exec(contentDisposition)[1];
+      return new Blob(byteArrays, {
+        type: ct
+      });
     }
 
     function downloadAsDataUri(binary) {
-      return download(binary)
+      var url = buildFileUrl(binary);
+      return c8yBinaryCommon.download(binary, url)
         .then(function (xhr) {
           var contentType = xhr.getResponseHeader('Content-Type');
-          var base64 = arrayBufferToBase64(xhr.response);
+          var base64 = c8yBinaryCommon.arrayBufferToBase64(xhr.response);
           var dataUri = isLegacyBinaryObject(binary) ?
             getDataUri(binary) :
             'data:' + contentType + ';base64,' + base64;
@@ -222,65 +221,15 @@
     }
 
     function downloadAsText(binary) {
-      var url = buildFileUrl(binary),
-        config = {
-          headers: c8yAuth.headers(),
-          responseType: 'text',
-          transformResponse: function (data) {
-            return data;
-          }
-        };
-      return $http.get(url, config);
-    }
-
-    function arrayBufferToBase64(buffer) {
-      var binary = '';
-      var bytes = new Uint8Array(buffer);
-      var len = bytes.byteLength;
-      for (var i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      return btoa(binary);
-    }
-
-    function download(binary, length) {
-      var deferred = $q.defer();
       var url = buildFileUrl(binary);
-      var xhr = new XMLHttpRequest();
-
-      xhr.open('GET', url, true);
-      xhr.responseType = 'arraybuffer';
-      xhr.onload = function () {
-        if (xhr.status === 200) {
-          deferred.resolve(xhr);
-        } else {
-          deferred.reject(xhr);
+      var config = {
+        headers: c8yAuth.headers(),
+        responseType: 'text',
+        transformResponse: function (data) {
+          return data;
         }
       };
-      xhr.onprogress = function (e) {
-        if (!_.isUndefined(e.loaded)) {
-          var totalLength = _.isNumber(Number(length)) && length || size(binary);
-          if (!_.isUndefined(totalLength)) {
-            var loadedPercentage = e.loaded / totalLength;
-            deferred.notify(loadedPercentage);
-          }
-        }
-      };
-
-      _.forEach(c8yAuth.headers(), function (val, key) {
-        if (val) {
-          xhr.setRequestHeader(key, val);
-        }
-      });
-
-      if (output.__test) {
-        output.__downloadDeferred = deferred;
-      } else {
-        xhr.send();
-      }
-
-
-      return deferred.promise;
+      return $http.get(url, config);
     }
 
     function buildFileUrl(binary) {
@@ -393,10 +342,7 @@
      * </pre>
      */
     function size(binary) {
-      var binaryLength = _.get(binary, 'length');
-      var attachments = _.get(binary, '_attachments');
-      var attachmentsObj = _.get(attachments, _.first(_.keys(attachments)));
-      return _.isUndefined(binaryLength) ? _.get(attachmentsObj, 'length') : binaryLength;
+      return c8yBinaryCommon.size(binary);
     }
 
     /**

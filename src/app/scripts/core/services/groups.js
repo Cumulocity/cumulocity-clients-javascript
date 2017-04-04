@@ -12,18 +12,14 @@
    * This service allows for managing device and asset groups.
    */
   angular.module('c8y.core')
-    .factory('c8yGroups', [
-      '$q',
-      'c8yBase',
-      'c8yInventory',
-      'c8yGroupTypesConfig',
-      c8yGroups
-    ]);
+    .factory('c8yGroups', c8yGroups);
 
-  function c8yGroups($q,
+  function c8yGroups(
+    $q,
     c8yBase,
     c8yInventory,
-    c8yGroupTypesConfig
+    c8yGroupTypesConfig,
+    c8yPermissions
   ) {
 
     /**
@@ -144,6 +140,12 @@
      * </pre>
      */
     function getTopLevelGroups() {
+      return c8yPermissions
+        .mustHaveAllRoles(['ROLE_INVENTORY_READ'])
+        .then(_getTopLevelGroups, loadRootDeviceGroups);
+    }
+
+    function _getTopLevelGroups() {
       return getTopLevelGroupTypes().then(getGroupsByGroupTypes);
     }
 
@@ -162,6 +164,32 @@
         return $q.all(promises).then(_.flattenDeep);
       }
       return $q.when([]);
+    }
+
+    function loadRootDeviceGroups() {
+      var filter = {
+        fragmentType: 'c8y_IsDeviceGroup',
+        pageSize: 1000,
+        withParents: true
+      };
+      var rootGroupsOnly = function (groups) {
+        return _.reject(groups, hasParents(groups));
+      };
+      return c8yInventory.list(filter)
+        .then(rootGroupsOnly);
+    }
+
+    function hasParents(groups) {
+      var groupsMap = _.keyBy(groups, 'id');
+      return function (group) {
+        var parentsIds = _.map(
+          _.get(group, 'assetParents.references'),
+          _.property('managedObject.id')
+        );
+        return _.some(parentsIds, function (id) {
+          return _.get(groupsMap, id);
+        });
+      };
     }
 
     /**
