@@ -8,9 +8,10 @@
  * This service allows for managing audits.
  */
 angular.module('c8y.core')
-.factory('c8yAudits', ['$http', 'c8yBase',
-function ($http, c8yBase) {
+.service('c8yAudits', ['$http', 'c8yBase', 'KeysMixin', 'gettext', C8yAudits]);
+function C8yAudits($http, c8yBase, KeysMixin, gettext) {
   'use strict';
+
 
   var clean = c8yBase.cleanFields,
     path = 'audit/auditRecords',
@@ -22,12 +23,12 @@ function ($http, c8yBase) {
      * @name severity
      * @propertyOf c8y.core.service:c8yAudits
      * @returns {object} Audit severities map. Available values are:
-     * 
+     *
      * - **WARNING** – Audit is just a warning.
      * - **MINOR** - Audit has got minor priority.
      * - **MAJOR** - Audit has got major priority.
      * - **CRITICAL** - Audit is critical.
-     * 
+     *
      * @example
      * <pre>
      *   $scope.selectedSeverity = c8yAudits.severity.MINOR;
@@ -43,14 +44,14 @@ function ($http, c8yBase) {
      * @ngdoc property
      * @name severityList
      * @propertyOf c8y.core.service:c8yAlarms
-     * @returns {array} The list of available alarm severity levels.
-     * 
+     * @returns {array} The list of available alarm severity levels
+     *
      * @example
      * <pre>
      *   $scope.alarmSeverities = c8yAlarms.severityList;
      * </pre>
      */
-    severityList = Object.keys(severity),
+    severityList = _.keys(severity),
     _reservedKeys = [
       'id',
       'self',
@@ -61,140 +62,138 @@ function ($http, c8yBase) {
      * @name reservedKeys
      * @propertyOf c8y.core.service:c8yAudits
      * @returns {array} The list of reserved keys for audit fields.
-     * 
+     *
      * @example
      * <pre>
      *   $scope.reservedKeys = c8yAlarms.reservedKeys;
      * </pre>
      */
-    reservedKeys = _reservedKeys,
     removeKeys = _reservedKeys;
 
-//  function buildDetailUrl(audit) {
-//    var id = audit.id || audit;
-//    return c8yBase.url(path + '/' + id);
-//  }
+  this.types = {
+    'User': gettext('User'),
+    'Group': gettext('Group'),
+    'Alarm': gettext('Alarm'),
+    'Operation': gettext('Operation'),
+    'SmartRule': gettext('Smart Rule'),
+    'CepModule': gettext('Event processing'),
+    'Tenant': gettext('Tenant')
+  };
 
-//  /**
-//   * @ngdoc function
-//   * @name list
-//   * @methodOf c8y.core.service:c8yAudits
-//   * 
-//   * @description
-//   * Gets the list of alarms filtered by parameters.
-//   * 
-//   * @param {object} filters Object containing filters for querying alarms. Supported filters specific for alarms are:
-//   * 
-//   * - **source** – `integer` – Alarm's source device's id.
-//   * - **severity** - `string` - Alarm's severity level ({@link c8y.core.service:c8yAlarms#severity c8yAlarms.severity}).
-//   * - **status** - `string` - Alarm's status ({@link c8y.core.service:c8yAlarms#status c8yAlarms.status}).
-//   * - **resolved** - `boolean` - Alarm's resolved status.
-//   * 
-//   * @returns {array} Returns the list of alarms. Each alarm has the following properties:
-//   * 
-//   * - **id** - `integer` - Alarm's id.
-//   * - **type** - `string` - Type of alarm.
-//   * - **text** - `string` - Alarm's text message.
-//   * - **time** - `string` - Alarm's date provided by device.
-//   * - **creationTime** - `string` - Date and time when alarm was created on the platform.
-//   * - **source** - `object` - Source device's object with the following properties:
-//   *     - **id** - source device id,
-//   *     - **name** - source device name.
-//   * - **count** - `integer` - Alarm's count.
-//   * - **firstOccurrence** - `boolean` - Indicates that this is the first occurrence of the alarm.
-//   * - **history** - `object` - Contains the list of history items in  **auditRecords** property.
-//   * - **severity** - `string` - Alarm's severity level ({@link c8y.core.service:c8yAlarms#severity c8yAlarms.severity}).
-//   * - **status** - `string` - Alarm's status ({@link c8y.core.service:c8yAlarms#status c8yAlarms.status}}.
-//   * - **self** - `string` - Alarm's self URL.
-//   * 
-//   * @example
-//   * <pre>
-//   *   c8yAlarms.list({
-//   *     source: deviceId,
-//   *     severity: c8yAlarms.severity.MAJOR,
-//   *     status: c8yAlarms.status.ACTIVE,
-//   *     resolved: false,
-//   *     pageSize: 100
-//   *   }).then(function (alarms) {
-//   *     $scope.alarms = [];
-//   *     angular.forEach(alarms, function(alarm) {
-//   *       $scope.alarms.push(alarm);
-//   *     });
-//   *   });
-//   * </pre>
-//   */
-//  function list(filters) {
-//    // Filters: status, source, dateFrom, dateTo
-//    var url = c8yBase.url(path),
-//      _filters = c8yBase.timeOrderFilter(
-//        c8yBase.pageSizeNoTotalFilter(filters)
-//      ),
-//      cfg = {
-//        params: _filters
-//      },
-//      onList = c8yBase.cleanListCallback('alarms', list, _filters);
-//
-//    return $http.get(url, cfg).then(onList);
-//  }
+  this.reservedKeys = _reservedKeys;
+  this.standardKeys = {};
 
-//  /**
-//   * @ngdoc function
-//   * @name detail
-//   * @methodOf c8y.core.service:c8yAudits
-//   * 
-//   * @description
-//   * Gets the details of selected alarms.
-//   * 
-//   * @param {object|integer} alarm Alarm object or alarm's id.
-//   * 
-//   * @returns {object} Alarm object with alarm details:
-//   * 
-//   * - **count** - `integer` - Alarm's count.
-//   * - **creationTime** - `string` - Date and time when alarm was created on the platform.
-//   * - **firstOccurrence** - `boolean` - Indicates that this is the first occurrence of the alarm.
-//   * - **history** - `object` - Contains the list of history items in  **auditRecords** property.
-//   * - **id** - `integer` - Alarms' id.
-//   * - **self** - `string` - Alarm's self URL.
-//   * - **severity** - `string` - Alarm's severity level ({@link c8y.core.service:c8yAlarms#severity c8yAlarms.severity}).
-//   * - **source** - `object` - Source device's object with the following properties:
-//   *     - **id** - source device id,
-//   *     - **name** - source device name.
-//   * - **status** - `string` - Alarm's status ({@link c8y.core.service:c8yAlarms#status c8yAlarms.status}}.
-//   * - **text** - `string` - Alarm's text message.
-//   * - **time** - `string` - Alarm's date provided by device.
-//   * - **type** - `string` - Type of alarm.
-//   * 
-//   * @example
-//   * <pre>
-//   *   var alarmId = 1;
-//   *   c8yAlarms.detail(alarmId).then(function (alarm) {
-//   *     $scope.alarm = alarm;
-//   *   });
-//   * </pre>
-//   */
-//  function detail(alarm) {
-//    var url = buildDetailUrl(alarm);
-//    return $http.get(url);
-//  }
+ function buildDetailUrl(audit) {
+   var id = audit.id || audit;
+   return c8yBase.url(path + '/' + id);
+ }
+
+ /**
+  * @ngdoc function
+  * @name list
+  * @methodOf c8y.core.service:c8yAudits
+  *
+  * @description
+  * Gets the list of audits filtered by parameters.
+  *
+  * @param {object} filters Object containing filters for querying audits. Supported filters specific for audits are:
+  *
+  * - **source** – `integer` – Audit's source object's id.
+  * - **type** - `string` - Audit's type.
+  * - **revert** - `boolean` - Reverts sort order based on time field.
+  * - **user** - `string` - Audit's user.
+  * - **dateFrom** - `string` - Limit audits to those after given date based on time field.
+  * - **dateTo** - `string` - Limit audits to those before given date based on time field.
+  *
+  * @returns {array} Returns the list of alarms. Each alarm has the following properties:
+  *
+  * - **activity** - `string` - Type of activity.
+  * - **severity** - `string` - Audit's severity level ({@link c8y.core.service:c8yAudits#severity c8yAudits.severity}).
+  * - **type** - `string` - Type of audit.
+  * - **time** - `string` - Audit's date and time provided by device.
+  * - **text** - `string` - Audit's text message.
+  *
+  * @example
+  * <pre>
+  *   c8yAudits.list({
+  *     source: objectId,
+  *     pageSize: 100
+  *   }).then(function (audits) {
+  *     $scope.audits = [];
+  *     _.forEach(audits, function(audit) {
+  *       $scope.audits.push(audit);
+  *     });
+  *   });
+  * </pre>
+  */
+  function list(filters) {
+   // Filters: status, source, dateFrom, dateTo, revert
+   var url = c8yBase.url(path);
+   var _filters = c8yBase.pageSizeNoTotalFilter(filters);
+   if (_filters.revert) {
+     var minMaxDates = c8yBase.timeOrderFilter({});
+     _filters.dateFrom = _filters.dateFrom || minMaxDates.dateFrom;
+     _filters.dateTo = _filters.dateTo || minMaxDates.dateTo;
+   }
+   var cfg = {
+     params: _filters
+   };
+   var onList = c8yBase.cleanListCallback('auditRecords', list, _filters);
+
+   return $http.get(url, cfg).then(onList);
+ }
+
+ /**
+  * @ngdoc function
+  * @name detail
+  * @methodOf c8y.core.service:c8yAudits
+  *
+  * @description
+  * Gets the details of selected audit.
+  *
+  * @param {object|integer} audit Audit object or audit's id.
+  *
+  * @returns {object} Audit object with audit details:
+  *
+  * - **id** - `integer` - Audit id.
+  * - **self** - `string` - Audit's self URL.
+  * - **source** - `object` - Source object with the following properties:
+  *     - **id** - source object id
+  * - **text** - `string` - Audit's text message.
+  * - **time** - `string` - Audit's timestamp.
+  * - **type** - `string` - Type of audit.
+  *
+  * @example
+  * <pre>
+  *   var auditId = 1;
+  *   c8yAudits.detail(auditId).then(function (audit) {
+  *     $scope.audit = audit;
+  *   });
+  * </pre>
+  */
+ function detail(audit) {
+   var url = buildDetailUrl(audit);
+   return $http.get(url);
+ }
 
   /**
    * @ngdoc function
    * @name create
    * @methodOf c8y.core.service:c8yAudits
-   * 
+   *
    * @description
    * Creates a new audit record.
-   * 
+   *
    * @param {object} audit Audit object to create. Supported properties are:
-   * 
+   *
    * - **activity** - `string` - Type of activity.
    * - **severity** - `string` - Audit's severity level ({@link c8y.core.service:c8yAudits#severity c8yAudits.severity}).
    * - **type** - `string` - Type of audit.
    * - **time** - `string` - Audit's date and time provided by device.
    * - **text** - `string` - Audit's text message.
-   * 
+   *
    * @returns {promise} $http's promise after posting new audit data.
-   * 
+   *
    * @example
    * <pre>
    *   c8yAudit.create({
@@ -212,115 +211,15 @@ function ($http, c8yBase) {
     return $http.post(url, data, defaultConfig);
   }
 
-//  /**
-//   * @ngdoc function
-//   * @name update
-//   * @methodOf c8y.core.service:c8yAudits
-//   * 
-//   * @description
-//   * Updates alarm data.
-//   * 
-//   * @param {object} alarm Alarm object.
-//   * 
-//   * @returns {promise} Returns $http's promise with the response from server.
-//   * 
-//   * @example
-//   * <pre>
-//   *   var alarmId = 1;
-//   *   c8yAlarms.detail(alarmId).then(function (alarm) {
-//   *     return alarm.status = c8yAlarms.status.CLEARED;
-//   *   }).then(c8yAlarms.update);
-//   * </pre>
-//   */
-//  function update(alarm) {
-//    var url = buildDetailUrl(alarm),
-//      data = clean(alarm, removeKeys);
-//    return $http.put(url, data, defaultConfig);
-//  }
 
-//  /**
-//   * @ngdoc function
-//   * @name save
-//   * @methodOf c8y.core.service:c8yAudits
-//   * 
-//   * @description
-//   * Creates alarm if it doesn't exist. Otherwise, updates existing one.
-//   * 
-//   * @param {object} alarm Alarm object.
-//   * 
-//   * @returns {promise} Returns $http's promise with the response from server.
-//   * 
-//   * @example
-//   * This will create a new alarm:
-//   * <pre>
-//   *   c8yAlarms.save({
-//   *     type: 'Custom alarm',
-//   *     severity: c8yAlarms.severity.MAJOR,
-//   *     status: c8yAlarms.status.ACTIVE,
-//   *     text: 'My Custom alarm',
-//   *     time: moment().format(c8yBase.dateFormat),
-//   *     source: {
-//   *       id: 1
-//   *     }
-//   *   });
-//   * </pre>
-//   * This will update exsting alarm:
-//   * <pre>
-//   *   c8yAlarms.save({
-//   *     id: 1,
-//   *     status: c8yAlarms.status.CLEARED
-//   *   });
-//   * </pre>
-//   */
-//  function save(alarm) {
-//    return alarm.id ? update(alarm) : create(alarm);
-//  }
-
-  function isReservedKey(key) {
-    return reservedKeys.indexOf(key) !== -1;
-  }
-
-  function isNotReservedKey(key) {
-    return !isReservedKey(key);
-  }
-
-  /**
-   * @ngdoc function
-   * @name getKeys
-   * @methodOf c8y.core.service:c8yAudits
-   * 
-   * @description
-   * Gets the list of property names for an audit.
-   * 
-   * @param {object} audit Audit object.
-   * 
-   * @returns {array} Returns the list of audit properties.
-   * 
-   * @example
-   * <pre>
-   *   var auditId = 1;
-   *   c8yAudits.detail(auditId).then(function (audit) {
-   *     $scope.keys = c8yAudits.getKeys(audit);
-   *   });
-   * </pre>
-   */
-  function getKeys(alarm) {
-    var _alarm = angular.copy(alarm),
-      props = Object.keys(_alarm);
-
-    return props.filter(isNotReservedKey);
-  }
-
-  return {
-//    list: list,
-//    detail: detail,
-//    update: update,
+  _.assign(this, {
+    list: list,
+    detail: detail,
     create: create,
-//    save: save,
     severity: severity,
-    severityList: severityList,
-    reservedKeys: reservedKeys,
-    getKeys: getKeys
-  };
+    severityList: severityList
+  });
 
-}]);
+  _.assign(this, KeysMixin);
+  _.bindAll(this, _.keys(KeysMixin));
+}

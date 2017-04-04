@@ -1,17 +1,26 @@
-/**
- * @ngdoc service
- * @name c8y.core.service:c8yGroups
- * @requires c8y.core.service:c8yInventory
- * @requires c8y.core.service:c8yGroupTypesConfig
- * @requires $q
- *
- * @description
- * This service allows for managing device and asset groups.
- */
-angular.module('c8y.core')
-.factory('c8yGroups', ['$q', 'c8yBase', 'c8yInventory', 'c8yGroupTypesConfig',
-  function ($q, c8yBase, c8yInventory, c8yGroupTypesConfig) {
-    'use strict';
+(function() {
+  'use strict';
+
+  /**
+   * @ngdoc service
+   * @name c8y.core.service:c8yGroups
+   * @requires c8y.core.service:c8yInventory
+   * @requires c8y.core.service:c8yGroupTypesConfig
+   * @requires $q
+   *
+   * @description
+   * This service allows for managing device and asset groups.
+   */
+  angular.module('c8y.core')
+    .factory('c8yGroups', c8yGroups);
+
+  function c8yGroups(
+    $q,
+    c8yBase,
+    c8yInventory,
+    c8yGroupTypesConfig,
+    c8yPermissions
+  ) {
 
     /**
      * @ngdoc function
@@ -38,21 +47,53 @@ angular.module('c8y.core')
      * </pre>
      */
     function getGroupItems(group) {
-      return c8yInventory.detail(group).then(c8yBase.getResData)
-        .then(getChildrenIds).then(function (childrenIds) {
-          return childrenIds.length > 0 ? c8yInventory.list({ids: childrenIds.join(','), pageSize: childrenIds.length}) : $q.when([]);
-        });
+      return c8yInventory.listQuery(getGroupItemsQuery(group), {withParents: true}, true);
     }
 
-    function getChildrenIds(group) {
-      var childrenIds = [];
-      childrenIds = childrenIds.concat(group.childAssets.references.map(getIdFromManagedObjectReference));
-      childrenIds = childrenIds.concat(group.childDevices.references.map(getIdFromManagedObjectReference));
-      return $q.when(childrenIds);
+    /**
+     * @ngdoc function
+     * @name getGroupAssetsAndDevices
+     * @methodOf c8y.core.service:c8yGroups
+     *
+     * @description
+     * Gets group items excluding childAdditions
+     *
+     * @param {object} group Group managed object.
+     *
+     * @returns {promise} Returns promise with array of group items childAdditions
+     *
+     * @example
+     * <pre>
+     *   var groupId = 1;
+     *   c8yInventory.detail(groupId).then(function (res) {
+     *     return res.data;
+     *   }).then(function (group) {
+     *     return c8yGroups.getGroupAssetsAndDevices(group).then(function (groupItems) {
+     *       $scope.itemsNoAdditions = groupItems;
+     *     });
+     *   });
+     * </pre>
+     */
+    function getGroupAssetsAndDevices(group) {
+      var groupId = String(c8yBase.getId(group));
+      var rejectAddition = function (item) {
+        var additionParentsIds = _.map(
+          _.get(item, 'additionParents.references'),
+          _.property('managedObject.id')
+        );
+        return _.includes(additionParentsIds, groupId);
+      };
+      var rejectAdditions = function (items) {
+        return _.reject(items, rejectAddition);
+      };
+      return getGroupItems(group)
+        .then(rejectAdditions);
     }
 
-    function getIdFromManagedObjectReference(ref) {
-      return ref.managedObject.id;
+    function getGroupItemsQuery(group) {
+      return {
+        __bygroupid: c8yBase.getId(group)
+      };
     }
 
     /**
@@ -99,6 +140,12 @@ angular.module('c8y.core')
      * </pre>
      */
     function getTopLevelGroups() {
+      return c8yPermissions
+        .mustHaveAllRoles(['ROLE_INVENTORY_READ'])
+        .then(_getTopLevelGroups, loadRootDeviceGroups);
+    }
+
+    function _getTopLevelGroups() {
       return getTopLevelGroupTypes().then(getGroupsByGroupTypes);
     }
 
@@ -114,9 +161,35 @@ angular.module('c8y.core')
         _.forEach(groupTypesList, function (groupType) {
           promises.push(c8yInventory.list({type: groupType.type}));
         });
-        return $q.all(promises).then(_.flatten);
+        return $q.all(promises).then(_.flattenDeep);
       }
       return $q.when([]);
+    }
+
+    function loadRootDeviceGroups() {
+      var filter = {
+        fragmentType: 'c8y_IsDeviceGroup',
+        pageSize: 1000,
+        withParents: true
+      };
+      var rootGroupsOnly = function (groups) {
+        return _.reject(groups, hasParents(groups));
+      };
+      return c8yInventory.list(filter)
+        .then(rootGroupsOnly);
+    }
+
+    function hasParents(groups) {
+      var groupsMap = _.keyBy(groups, 'id');
+      return function (group) {
+        var parentsIds = _.map(
+          _.get(group, 'assetParents.references'),
+          _.property('managedObject.id')
+        );
+        return _.some(parentsIds, function (id) {
+          return _.get(groupsMap, id);
+        });
+      };
     }
 
     /**
@@ -145,9 +218,10 @@ angular.module('c8y.core')
 
     return {
       getGroupItems: getGroupItems,
+      getGroupAssetsAndDevices: getGroupAssetsAndDevices,
       getGroupTypeItems: getGroupTypeItems,
       getTopLevelGroups: getTopLevelGroups,
       isGroup: isGroup
     };
   }
-]);
+}());

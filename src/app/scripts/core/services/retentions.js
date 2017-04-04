@@ -23,9 +23,7 @@
   ) {
     var path = 'retention/retentions',
       defaultConfig = {
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: c8yBase.contentHeaders('retentionRule', 'retentionRule')
       };
 
     /**
@@ -49,6 +47,15 @@
       'AUDIT',
       '*'
     ];
+
+    var unsupportedFieldsForDataTypes = {
+      'ALARM': ['fragmentType'],
+      'EVENT': [],
+      'MEASUREMENT': [],
+      'OPERATION': ['type'],
+      'AUDIT': ['fragmentType'],
+      '*': []
+    };
 
     /**
      * @ngdoc function
@@ -80,7 +87,7 @@
      *   var filters = {pageSize: 100};
      *   c8yRetentions.list(filters).then(function (retentions) {
      *     $scope.retentions = [];
-     *     angular.forEach(retentions, function(retention) {
+     *     _.forEach(retentions, function(retention) {
      *       $scope.retentions.push(retention);
      *     });
      *   });
@@ -249,6 +256,29 @@
       return c8yBase.url(path + '/' + id);
     }
 
+    /**
+     * @ngdoc function
+     * @name isFieldSupportedByRule
+     * @methodOf c8y.core.service:c8yRetentions
+     *
+     * @description
+     * Checks if given rule supports specific field.
+     *
+     * @param {object} rule Retention rule object.
+     * @param {string} fieldName Field name to check.
+     *
+     * @returns {boolean} Returns true if field is supported by the rule or false otherwise.
+     *
+     * @example
+     * <pre>
+     *   var rule = {dataType: 'ALARM'};
+     *   var fragmentTypeSupported = c8yRetentions.isFieldSupportedByRule(rule, 'fragmentType');
+     * </pre>
+     */
+    function isFieldSupportedByRule(rule, fieldName) {
+      return !_.includes(unsupportedFieldsForDataTypes[rule.dataType || '*'] || [], fieldName);
+    }
+
     return {
       list: list,
       detail: detail,
@@ -256,7 +286,8 @@
       update: update,
       save: save,
       remove: remove,
-      dataTypes: dataTypes
+      dataTypes: dataTypes,
+      isFieldSupportedByRule: isFieldSupportedByRule
     };
   }
 })();

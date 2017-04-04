@@ -1,3 +1,8 @@
+
+(function () {
+  'use strict';
+
+
 /**
  * @ngdoc service
  * @name c8y.core.service:c8yDeviceControl
@@ -10,11 +15,26 @@
  * @description
  * This service allows for managing device operations.
  */
-angular.module('c8y.core')
-.factory('c8yDeviceControl', ['$http', '$rootScope', '$q', 'c8yBase', 'c8yRealtime',
-function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
-  'use strict';
+angular.module('c8y.core').service('c8yDeviceControl', [
+  '$http',
+  '$rootScope',
+  '$q',
+  'c8yBase',
+  'c8yRealtime',
+  'gettext',
+  'KeysMixin',
+  C8yDeviceControl
+]);
 
+function C8yDeviceControl(
+  $http,
+  $rootScope,
+  $q,
+  c8yBase,
+  c8yRealtime,
+  gettext,
+  KeysMixin
+) {
   var clean = c8yBase.cleanFields,
     path = 'devicecontrol/operations',
     opIdLocationRegExp = '\\/devicecontrol\\/operations\\/(\\d+)',
@@ -26,30 +46,30 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
      * @name status
      * @propertyOf c8y.core.service:c8yDeviceControl
      * @returns {object} Device operation statuses map. <!--Available values are described {@link http://docs.cumulocity.com/deviceOperationStatus@TODO here}.-->
-     * 
+     *
      * @example
      * <pre>
      *   $scope.operation.status = c8yDeviceControl.status.SUCCESSFUL;
      * </pre>
      */
     status = {
-      PENDING: 'PENDING',
-      SUCCESSFUL: 'SUCCESSFUL',
-      EXECUTING: 'EXECUTING',
-      FAILED: 'FAILED'
+      PENDING: gettext('PENDING'),
+      SUCCESSFUL: gettext('SUCCESSFUL'),
+      EXECUTING: gettext('EXECUTING'),
+      FAILED: gettext('FAILED')
     },
     /**
      * @ngdoc property
      * @name statusList
      * @propertyOf c8y.core.service:c8yDeviceControl
      * @returns {array} The list of available device operation statuses.
-     * 
+     *
      * @example
      * <pre>
      *   $scope.operationStatuses = c8yDeviceControl.statusList;
      * </pre>
      */
-    statusList = Object.keys(status),
+    statusList = _.keys(status),
     cleanKeys = [
       'creationTime',
       'deviceExternalIDs',
@@ -57,30 +77,39 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
       'self'
     ],
     cleanKeysUpdate = [
-      'deviceId'
+      'deviceId',
+      'deviceName',
+      'bulkOperationId'
     ],
-    reservedKeys = cleanKeys.concat(['deviceId']),
-    style = {},
-    /**
-     * @ngdoc property
-     * @name events
-     * @propertyOf c8y.core.service:c8yDeviceControl
-     * @returns {scope} Returns AngularJS scope on which the following events are emitted:
-     * 
-     * - **create** - when operation was created,
-     * - **update** - when operation was updated.
-     * 
-     * @example
-     * <pre>
-     *   c8yDeviceControl.events.$on('create', function() {
-     *     // code to execute when an operation was created
-     *   });
-     *   c8yDeviceControl.events.$on('update', function() {
-     *     // code to execute when an operation was updated
-     *   });
-     * </pre>
-     */
-    evtBus = $rootScope.$new(true);
+    style = {};
+
+  this.reservedKeys = cleanKeys.concat(['deviceId', 'deviceName', 'bulkOperationId']);
+  this.standardKeys = {
+    failureReason: gettext('Failure reason'),
+    description: gettext('Description'),
+    status: gettext('Status')
+  };
+
+  /**
+   * @ngdoc property
+   * @name events
+   * @propertyOf c8y.core.service:c8yDeviceControl
+   * @returns {scope} Returns AngularJS scope on which the following events are emitted:
+   *
+   * - **create** - when operation was created,
+   * - **update** - when operation was updated.
+   *
+   * @example
+   * <pre>
+   *   c8yDeviceControl.events.$on('create', function() {
+   *     // code to execute when an operation was created
+   *   });
+   *   c8yDeviceControl.events.$on('update', function() {
+   *     // code to execute when an operation was updated
+   *   });
+   * </pre>
+   */
+  var evtBus = $rootScope.$new(true);
 
   style[status.PENDING] = {
     icon: 'clock-o',
@@ -108,19 +137,19 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name list
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Gets the list of device operations.
-   * 
+   *
    * @param {object} filters Filters object.
-   * 
+   *
    * @returns {promise} Returns promise with the list of operations. <!--See device operation object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @example
    * <pre>
    *   c8yDeviceControl.list().then(function (operations) {
    *     $scope.operations = [];
-   *     angular.forEach(operations, function(operation) {
+   *     _.forEach(operations, function(operation) {
    *       $scope.operations.push(operation);
    *     });
    *   });
@@ -128,7 +157,7 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    */
   function list(filters) {
     var url = c8yBase.url(path),
-       _filters = c8yBase.pageSizeNoTotalFilter(filters),
+      _filters = c8yBase.pageSizeNoTotalFilter(filters),
       cfg = {
         params: _filters
       },
@@ -141,14 +170,14 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name listPaged
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Gets paged list of device operations.
-   * 
+   *
    * @param {object} filters Filters object.
-   * 
+   *
    * @returns {promise} Returns promise with the list of operations. <!--See device operation object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @example
    * <pre>
    *   function getOperationsAllPaged(filters) {
@@ -160,18 +189,18 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    *       return ops;
    *     };
    *     return c8yDeviceControl.listPaged(filters)
-   *            .then(onDone, angular.noop, onNotify);
+   *            .then(onDone, _.noop, onNotify);
    *   }
    * </pre>
    */
   function listPaged(filters) {
     var defer = $q.defer(),
-      _filters = angular.extend(filters || {}, {pageSize: 1000}),
+      _filters = _.assign(filters || {}, {pageSize: 1000}),
       cancelled = false,
       onList = function (list) {
-        var isNext = angular.isDefined(list.paging.next) && !(list.length < _filters.pageSize);
+        var isNext = !_.isUndefined(list.paging.next) && list.length >= _filters.pageSize;
         defer.notify(list);
-        
+
         if (!isNext) {
           defer.resolve(true);
         }
@@ -183,7 +212,7 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
         return isNext ? list.paging.next().then(onList) : true;
       };
 
-    angular.extend(defer.promise, {
+    _.assign(defer.promise, {
       cancel: function () {
         cancelled = true;
         defer.reject('canceled');
@@ -199,14 +228,14 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name detail
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Gets details of device operation.
-   * 
+   *
    * @param {integer|object} operation Device operation's id or operation object.
-   * 
+   *
    * @returns {promise} Returns $http's promise. <!--See response's `data` object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @example
    * <pre>
    *   var operationId = 1;
@@ -224,18 +253,18 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name create
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Creates a new device operation.
-   * 
+   *
    * @param {object} operation Device operation object. <!--See object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @returns {promise} Returns $http's promise and emits `create` event on {@link c8y.core.service:c8yDeviceControl#properties_events `events`}.
-   * 
+   *
    * @example
    * <pre>
    *   var operation = {
-   *     deviceId: 1,
+   *     deviceId: '1',
    *     com_cumulocity_model_WebCamDevice: {
    *       name: 'take picture',
    *       parameters: {
@@ -250,7 +279,7 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
   function create(operation) {
     var url = c8yBase.url(path),
       data = clean(operation, cleanKeys),
-      cfg = angular.copy(defaultConfig);
+      cfg = _.cloneDeep(defaultConfig);
 
     if (!data.deviceId) {
       throw new Error('c8yDeviceControl: data must have a deviceId property');
@@ -261,28 +290,28 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
       return id;
     });
   }
-  
+
   function getIdFromRes(res) {
     var regexp = new RegExp(opIdLocationRegExp);
     var matches = res.headers('Location').match(regexp);
     return parseInt(matches[1], 10);
   }
-  
+
   /**
    * @ngdoc function
    * @name createWithNotifications
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Creates a new device operation and returns promises which resolve when operation is created and when it is completed.
-   * 
+   *
    * @param {object} operation Device operation object. <!--See object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @returns {promise} Returns a promise that resolves to an object with two properties:
-   * 
+   *
    * - **created** – Promise that resolves when operation is created and returns operation's id.
    * - **completed** - Promise that resolves when operation is completed and returns operation's data.
-   * 
+   *
    * @example
    * <pre>
    *   var operation = {
@@ -308,11 +337,12 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
     var created = create(operation);
     var completed = created.then(function (operationId) {
       operation.id = operationId;
-      
+
       var deferred = $q.defer();
       var subscriptionId = 'operation' + operation.id;
       var subscriptionChannel = '/operations/' + operation.deviceId;
       c8yRealtime.addListener(subscriptionId, subscriptionChannel, 'UPDATE', function (evt, data) {
+        // CAUTION: == is required here:
         if (data.id == operation.id) {
           if (data.status === status.SUCCESSFUL || data.status === status.FAILED) {
             c8yRealtime.stop(subscriptionId, subscriptionChannel);
@@ -335,19 +365,19 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name update
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Updates a device operation.
-   * 
+   *
    * @param {object} operation Device operation object. <!--See object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @returns {promise} Returns $http's promise and emits `update` event on {@link c8y.core.service:c8yDeviceControl#properties_events `events`}.
-   * 
+   *
    * @example
    * <pre>
    *   var operation = {
    *     id: 1,
-   *     deviceId: 2,
+   *     deviceId: '2',
    *     com_cumulocity_model_WebCamDevice: {
    *       name: 'take picture',
    *       parameters: {
@@ -363,7 +393,7 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
   function update(operation) {
     var url = c8yBase.url(path) + '/' + operation.id,
       data = clean(operation, cleanKeys.concat(cleanKeysUpdate)),
-      cfg = angular.copy(defaultConfig);
+      cfg = _.cloneDeep(defaultConfig);
 
     return $http.put(url, data, cfg).finally(function () {
       evtBus.$emit('update');
@@ -374,17 +404,17 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name cancel
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Cancels given operation by:
-   * 
+   *
    * - changing `status` to `c8yDeviceControl.status.FAILED`
    * - setting `failureReason` to `Operation cancelled by user`.
-   * 
+   *
    * @param {object} operation Device operation object. <!--See object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @returns {promise} Returns $http's promise and emits `update` event on {@link c8y.core.service:c8yDeviceControl#properties_eventss `events`}.
-   * 
+   *
    * @example
    * <pre>
    *   var operationId = 1;
@@ -396,7 +426,7 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    */
   function cancel(operation) {
     operation.status = status.FAILED;
-    operation.failureReason = 'Operation cancelled by user.';
+    operation.failureReason = gettext('Operation cancelled by user.');
     return update(operation);
   }
 
@@ -404,14 +434,14 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name save
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Creates a new operation (if `operation.id` is not provided) or updates existing operation.
-   * 
+   *
    * @param {object} operation Device operation object. <!--See object specification {@link http://docs.cumulocity.com/deviceOperation@TODO here}.-->
-   * 
+   *
    * @returns {promise} Returns $http's promise and emits `create` or `update` event on {@link c8y.core.service:c8yDeviceControl#properties_events `events`}.
-   * 
+   *
    * @example
    * <pre>
    *   var operationId = 1;
@@ -430,17 +460,17 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * @ngdoc function
    * @name getStyle
    * @methodOf c8y.core.service:c8yDeviceControl
-   * 
+   *
    * @description
    * Gets styling settings for operation status.
-   * 
+   *
    * @param {object|string} operationOrStatus Device operation object<!-- (see specification {@link http://docs.cumulocity.com/deviceOperation@TODO here})--> or operation status string.
-   * 
+   *
    * @returns {object} Returns object with the following properties:
-   * 
+   *
    * - **icon** - `string` - icon name,
    * - **cls** - `string` - CSS class name
-   * 
+   *
    * @example
    * Controller:
    * <pre>
@@ -457,47 +487,12 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
    * </pre>
    */
   function getStyle(operationOrStatus) {
-    var _status = angular.isString(operationOrStatus) ?
+    var _status = _.isString(operationOrStatus) ?
       operationOrStatus : operationOrStatus.status;
     return style[_status.toUpperCase()];
   }
 
-  function isReservedKey(key) {
-    return reservedKeys.indexOf(key) !== -1;
-  }
-
-  function isNotReservedKey(key) {
-    return !isReservedKey(key);
-  }
-
-  /**
-   * @ngdoc function
-   * @name getKeys
-   * @methodOf c8y.core.service:c8yDeviceControl
-   * 
-   * @description
-   * Gets the list of operation property names that are not reserved.
-   * 
-   * @param {object} operation Device operation object<!-- (see specification {@link http://docs.cumulocity.com/deviceOperation@TODO here})-->.
-   * 
-   * @returns {array} Returns array with operation property names.
-   * 
-   * @example
-   * Controller:
-   * <pre>
-   *   $scope.properties = function (operation) {
-   *     return c8yDeviceControl.getKeys(operation);
-   *   };
-   * </pre>
-   */
-  function getKeys(operation) {
-    var _operation = angular.copy(operation),
-      props = Object.keys(_operation);
-
-    return props.filter(isNotReservedKey);
-  }
-
-  return {
+  _.assign(this, {
     list: list,
     listPaged: listPaged,
     detail: detail,
@@ -509,8 +504,10 @@ function ($http, $rootScope, $q, c8yBase, c8yRealtime) {
     status: status,
     statusList: statusList,
     getStyle: getStyle,
-    getKeys: getKeys,
     events: evtBus
-  };
+  });
 
-}]);
+  _.assign(this, KeysMixin);
+  _.bindAll(this, _.keys(KeysMixin));
+}
+})();

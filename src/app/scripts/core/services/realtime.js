@@ -1,533 +1,646 @@
-/**
- * @ngdoc service
- * @name c8y.core.service:c8yRealtime
- * @requires c8y.core.service:c8yBase
- * @requires app.service:info
- * @requires $routeScope
- * @requires $http
- *
- * @description
- * This service allows for using realtime notifications.
- *
- * @example
- * The following example controller uses c8yRealtime service to handle operation updates.
- * <pre>
- *   angular.module('myModule')
- *   .controller(function ($scope, c8yRealtime, c8yDeviceControl, c8yAlert) {
- *     var scopeId = $scope.$id;
- *     var channel = '/operations/*';
- *
- *     function onRealtimeNotification(evt, data) {
- *       if (isOperationCompleted(data)) {
- *         c8yAlert.success(
- *           'Operation with id ' + data.id +
- *           ' has been completed with status ' + data.status + '!'
- *         );
- *       }
- *     });
- *
- *     function isOperationCompleted(operation) {
- *       return (operation.status === c8yDeviceControl.status.SUCCESSFUL
- *         || operation.status === c8yDeviceControl.status.FAILED);
- *     }
- *
- *     function onDestroy() {
- *       c8yRealtime.stop(scopeId, channel);
- *     }
- *
- *     c8yRealtime.addListener(scopeId, channel, c8yRealtime.realtimeActions().UPDATE, onRealtimeNotification);
- *     c8yRealtime.start(scopeId, channel);
- *
- *     $scope.$on('$destroy', onDestroy);
- *   });
- * </pre>
- */
-angular.module('c8y.core')
-.factory('c8yRealtime', ['$http', '$rootScope', '$timeout', 'c8yBase', 'info',
-function ($http, $rootScope, $timeout, c8yBase, info) {
+/* global org */
+(function () {
   'use strict';
 
-  var path = 'cep/realtime',
-  config = {
-    url: c8yBase.url(path),
-    logLevel: 'info',
-    requestHeaders: {
-      Authorization: 'Basic ' + info.token,
-      UseXBasic: true
-    },
-    appendMessageTypeToURL: false,
-  },
-  timeout = 570000,
-  abortConnection,
-  disconnecting,
-  overallSubscriptions = 0,
-  subscriptionQueue = [],
-  restartConnection,
-  cometd = new $.Cometd(),
-  icons = {},
-  subscriptionMap = {},
-  realtimeActions = {
-    CREATE: 'CREATE',
-    UPDATE: 'UPDATE',
-    DELETE: 'DELETE'
-  },
-  lastConnect,
-  bus = $rootScope.$new(true);
+  /**
+   * @ngdoc service
+   * @name c8y.core.service:c8yRealtime
+   * @requires $q
+   * @requires $rootScope
+   * @requires c8y.core.service:c8yBase
+   * @requires c8y.core.service:c8yAuth
+   *
+   * @description
+   * This service allows for using realtime notifications.
+   *
+   * @example
+   * The following example controller uses c8yRealtime service to handle operation updates.
+   * <pre>
+   *   angular.module('myModule')
+   *   .controller(function ($scope, c8yRealtime, c8yDeviceControl, c8yAlert) {
+   *     var scopeId = $scope.$id;
+   *     var channel = '/operations/*';
+   *
+   *     function onRealtimeNotification(evt, data) {
+   *       if (isOperationCompleted(data)) {
+   *         c8yAlert.success(
+   *           'Operation with id ' + data.id +
+   *           ' has been completed with status ' + data.status + '!'
+   *         );
+   *       }
+   *     });
+   *
+   *     function isOperationCompleted(operation) {
+   *       return (operation.status === c8yDeviceControl.status.SUCCESSFUL
+   *         || operation.status === c8yDeviceControl.status.FAILED);
+   *     }
+   *
+   *     function onDestroy() {
+   *       c8yRealtime.stop(scopeId, channel);
+   *     }
+   *
+   *     c8yRealtime.addListener(scopeId, channel, c8yRealtime.realtimeActions().UPDATE, onRealtimeNotification);
+   *     c8yRealtime.start(scopeId, channel);
+   *
+   *     $scope.$on('$destroy', onDestroy);
+   *   });
+   * </pre>
+   */
+  angular
+    .module('c8y.core')
+    .factory('c8yRealtime', c8yRealtime);
 
-  icons[true] = 'check-circle-o';
-  icons[false] = 'circle-o';
+  c8yRealtime.$inject = [
+    '$q',
+    '$rootScope',
+    'c8yBase',
+    'c8yAuth',
+    'c8yLongPollingTransport'
+  ];
 
-  cometd.unregisterTransport('websocket');
-  cometd.configure(config);
+  function c8yRealtime(
+    $q,
+    $rootScope,
+    c8yBase,
+    c8yAuth,
+    c8yLongPollingTransport
+  ) {
+    if (c8yBase.getFlag('e2e')) {
+      var E2eExtension = function () {
+        function setIntervalValue(interval) {
+          return _.toNumber(interval) || (_.toNumber(interval) === 0 ? 0 : 2000);
+        }
 
-  cometd.addListener('/meta/connect', function (data) {
-    subscriptionQueue.forEach( function (s) {
-      subscribe(s);
+        function setTimeoutValue(timeout) {
+          return _.toNumber(timeout) || (_.toNumber(timeout) === 0 ? 0 : 1000);
+        }
+
+        this.registered = function () {
+        };
+
+        this.outgoing = function (message) {
+          message.advice = {
+            reconnect: 'retry',
+            interval: setIntervalValue(c8yBase.getRuntimeOption('realtimeInterval')),
+            timeout: setTimeoutValue(c8yBase.getRuntimeOption('realtimeTimeout'))
+          };
+        };
+
+        this.getName = function () {
+          return 'e2eExtension';
+        };
+      };
+      var e2eExtension = new E2eExtension();
+    }
+
+    var cometd = new org.cometd.CometD();
+    cometd.unregisterTransports();
+    cometd.registerTransport('long-polling', new c8yLongPollingTransport.LongPollingTransport());
+    cometd.websocketEnabled = false;
+    /*
+     * @see https://docs.cometd.org/current/reference/#_javascript_configure
+     */
+    function configure() {
+      cometd.configure({
+        url: c8yBase.url('cep/realtime'),
+        logLevel: 'info',
+        requestHeaders: c8yAuth.headers(),
+        appendMessageTypeToURL: false
+      });
+      if (c8yBase.getFlag('e2e')) {
+        cometd.registerExtension(e2eExtension.getName(), e2eExtension);
+      }
+    }
+
+
+    /*
+     *
+     * @see https://docs.cometd.org/current/reference/#_javascript_handshake
+     */
+    var handshakeDeferred = $q.defer();
+    cometd.addListener('/meta/handshake', function (message) {
+      if (message.successful) {
+        /**
+         * In (rare) case of a re-handshake, resubscribe valid subscriptions.
+         * @see https://docs.cometd.org/current/reference/#_javascript_subscribe_resubscribe
+         */
+        _.forEach(channels, function (channel) {
+          var subscription = channel.subscription;
+
+          if (subscription) {
+            cometd.resubscribe(subscription);
+          }
+        });
+
+        handshakeDeferred.resolve();
+      } else {
+        var err = new Error('Handshake failed.');
+
+        handshakeDeferred.reject(err);
+        throw err;
+      }
     });
-    subscriptionQueue.length = 0;
+    var unauthorizedListener = cometd.addListener('/meta/connect', function (message) {
+      if (message.failure && message.failure.httpCode === 401) {
+        disconnect();
+        cometd.removeListener(unauthorizedListener);
+      }
+    });
 
-    if (data.successful) {
-      if (lastConnect) {
-        bus.$emit('connect', {
-          fromLastConnect: moment().diff(lastConnect, 'seconds')
+    $rootScope.$on('authStateChange', function onAuthStateChange(evt, state) {
+      if (state.hasAuth) {
+        configure();
+        cometd.handshake();
+      } else {
+        disconnect();
+      }
+    });
+
+    function disconnect() {
+      handshakeDeferred = $q.defer();
+      cometd.disconnect();
+    }
+
+    /*
+     * @see https://docs.cometd.org/current/reference/#_javascript_subscribe_exception_handling
+     */
+    cometd.onListenerException = function (err, subscription, isListener) {
+      // Uh-oh, something went wrong, disable this listener/subscriber
+      // Object "this" points to the CometD object
+      if (isListener) {
+        this.removeListener(subscription);
+      } else {
+        this.unsubscribe(subscription);
+      }
+      if (c8yBase.getFlag('e2e')) {
+        cometd.unregisterExtension(e2eExtension.getName());
+      }
+
+      throw new Error('Something went wrong: ' + err);
+    };
+
+    var channels = [];
+    // The data structure of subscription channels will pretty much look like this:
+    // channels = [
+    //  {
+    //    name: '/alarms/*',
+    //    subscription: cometdSubscriptionObject,
+    //    subscribers: [
+    //      {
+    //        id: '001',
+    //        subscribedEvents: [
+    //          { name: CREATE, listeners: [listener0, listener1, ...] },
+    //          { name: UPDATE, listeners: [listener0, listener1, ...] },
+    //          { name: DELETE, listeners: [listener0, listener1, ...] },
+    //          ...
+    //        ],
+    //        active: true
+    //      },
+    //      ...
+    //    ]
+    //  },
+    //  ...
+    // ]
+
+    // c8yRealtime service API.
+    var service = {
+      addListener: _.wrap(addListener, commaSeparatedChannelSegmentDecorator),
+      realtimeActions: realtimeActions,
+      switchRealtime: _.wrap(switchRealtime, commaSeparatedChannelSegmentDecorator),
+      getStatus: getStatus,
+      start: _.wrap(start, commaSeparatedChannelSegmentDecorator),
+      stop: _.wrap(stop, commaSeparatedChannelSegmentDecorator),
+      removeSubscriber: _.wrap(removeSubscriber, commaSeparatedChannelSegmentDecorator),
+      destroySubscription: _.wrap(destroySubscription, commaSeparatedChannelSegmentDecorator),
+      icon: icon,
+      watch: watch,
+      _getSubscriptionChannels: getChannels,
+      status: status
+    };
+
+    return service;
+
+    ////////////
+
+    /**
+     * @ngdoc function
+     * @name addListener
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * Adds a new Listener to a realtime channel for the given scope id.
+     *
+     * @param {string} subscriberId Unique subscription id, using the id of scope responsible for handling subscription is recommended.
+     * @param {string} channelName Subscribed channel.
+     * @param {string} subscribedEventName the event name on the channel that triggers the function
+     * @param {function} listener the function that will be triggered by the event
+     *
+     * @example
+     * See usage example {@link c8y.core.service:c8yRealtime#example here}.
+     */
+    function addListener(subscriberId, channelName, subscribedEventName, listener) {
+      var channel = _.find(channels, { name: channelName });
+
+      if (!channel) {
+        channel = createChannel(channelName);
+        channels.push(channel);
+      }
+
+      var subscribers = channel.subscribers;
+      var subscriber = _.find(subscribers, { id: subscriberId });
+
+      if (!subscriber) {
+        subscriber = createSubscriber(subscriberId);
+        subscribers.push(subscriber);
+      }
+
+      var subscribedEvents = subscriber.subscribedEvents;
+      var subscribedEvent = _.find(subscribedEvents, { name: subscribedEventName });
+
+      if (!subscribedEvent) {
+        subscribedEvent = createSubscribedEvent(subscribedEventName);
+        subscribedEvents.push(subscribedEvent);
+      }
+
+      subscribedEvent.listeners.push(listener);
+    }
+
+    function createChannel(name) {
+      return {
+        name: name,
+        subscription: undefined,
+        subscribers: []
+      };
+    }
+
+    function createSubscriber(id) {
+      return {
+        id: id,
+        subscribedEvents: _.map(realtimeActions(), createSubscribedEvent),
+        active: false
+      };
+    }
+
+    /**
+     * @ngdoc function
+     * @name realtimeActions
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * Gets the map of available realtime actions.
+     *
+     * @returns {object} Object containing the map of available realtime actions. It includes the following actions:
+     *
+     * - **CREATE** - item has been created,
+     * - **UPDATE** - item has been updated,
+     * - **DELETE** - item has been removed.
+     *
+     * @example
+     * See usage example {@link c8y.core.service:c8yRealtime#example here}.
+     */
+    function realtimeActions() {
+      return {
+        CREATE: 'CREATE',
+        UPDATE: 'UPDATE',
+        DELETE: 'DELETE'
+      };
+    }
+
+    function createSubscribedEvent(name) {
+      return {
+        name: name,
+        listeners: []
+      };
+    }
+
+    /**
+     * @ngdoc function
+     * @name switchRealtime
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * If subscription defined by id and channel is active then it is stopped.
+     * Otherwise it is started.
+     *
+     * @param {string} subscriberId Unique subscription id, using the id of scope responsible for handling subscription is recommended.
+     * @param {string} channelName Subscribed channel.
+     *
+     * @example
+     * <pre>
+     *   var id = $scope.$id;
+     *   var channel = '/operations/*';
+     *   c8yRealtime.switchRealtime(id, channel);
+     * </pre>
+     */
+    function switchRealtime(subscriberId, channelName) {
+      var active = getStatus(subscriberId, channelName);
+
+      if (active) {
+        stop(subscriberId, channelName);
+      } else {
+        start(subscriberId, channelName);
+      }
+    }
+
+    /**
+     * @ngdoc function
+     * @name getStatus
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * Gets status for given subscription id and channel.
+     *
+     * @param {string} subscriberId Unique subscription id, using the id of scope responsible for handling subscription is recommended.
+     * @param {string} channelName Subscribed channel.
+     *
+     * @returns {boolean} Boolean value indicating whether given subscription is active or not.
+     *
+     * @example
+     * <pre>
+     *   var id = $scope.$id;
+     *   var channel = '/operations/*';
+     *   var subscriptionActivityStatus = c8yRealtime.getStatus(id, channel);
+     * </pre>
+     */
+    function getStatus(subscriberId, channelName) {
+      var channelNames = collectChannelNames(channelName);
+
+      return _.every(channelNames, function (name) {
+        var active = false;
+        var channel = _.find(channels, { name: name });
+
+        if (channel) {
+          active = Boolean(_.find(channel.subscribers,
+            { id: subscriberId, active: true }));
+        }
+
+        return active;
+      });
+    }
+
+    /**
+     * @ngdoc function
+     * @name stop
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * Erases all registered listeners from this scope for the channel.
+     * If no other scope is active on this channel the channel will be unsubscribed.
+     *
+     * @param {string} subscriberId Unique subscription id, using the id of scope responsible for handling subscription is recommended.
+     * @param {string} channelName Subscribed channel.
+     *
+     * @example
+     * See usage example {@link c8y.core.service:c8yRealtime#example here}.
+     */
+    function stop(subscriberId, channelName) {
+      var subscriber = getSubscriber(subscriberId, channelName);
+
+      if (subscriber) {
+        subscriber.active = false;
+      }
+    }
+
+    /**
+     * @ngdoc function
+     * @name start
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * Starts listening for realtime notifications for given id and channel.
+     * Registers all listeners added previously for the channel using
+     * {@link c8y.core.service:c8yRealtime#methods_addListener addListener} method.
+     *
+     * @param {string} subscriberId Unique subscription id, using the id of scope responsible for handling subscription is recommended.
+     * @param {string} channelName Subscribed channel.
+     *
+     * @example
+     * See usage example {@link c8y.core.service:c8yRealtime#example here}.
+     */
+    function start(subscriberId, channelName) {
+      var subscriber = getSubscriber(subscriberId, channelName);
+
+      if (subscriber) {
+        subscriber.active = true;
+        var channel = _.find(channels, { name: channelName });
+
+        if (_.isUndefined(channel.subscription)) {
+          return subscribe(channel);
+        }
+      }
+    }
+
+    function subscribe(channel) {
+      ensureHandshakeSuccessful()
+        .then(function () {
+          channel.subscription = cometd.subscribe(channel.name, function (message) {
+            var messageData = message.data;
+            var subscribedEventName = messageData.realtimeAction;
+            var data = messageData.data;
+
+            _(channel.subscribers)
+              .filter('active')
+              .forEach(function (subscriber) {
+                var subscribedEvent = _.find(subscriber.subscribedEvents, { name: subscribedEventName });
+                var listeners = subscribedEvent.listeners;
+
+                _.forEach(listeners, function (listener) {
+                  listener(subscribedEventName, data);
+                });
+              });
+          });
+        });
+    }
+
+    function ensureHandshakeSuccessful() {
+      return handshakeDeferred.promise;
+    }
+
+
+    /**
+     * @ngdoc function
+     * @name removeSubscriber
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * First calls {@link c8y.core.service:c8yRealtime#methods_stop stop(id, channel)}
+     * and then removes all listeners for given subscription id and channel.
+     * If this was the last subscription on given channel then the broadcasting scope
+     * would be destroyed.
+     *
+     * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
+     * @param {string} channelName Subscribed channel.
+     *
+     * @example
+     * <pre>
+     *   var id = $scope.$id;
+     *   var channel = '/operations/*';
+     *   c8yRealtime.removeSubscriber(id, channel);
+     * </pre>
+     *
+     */
+    function removeSubscriber(id, channelName) {
+      var subscriber = getSubscriber(id, channelName);
+
+      if (subscriber) {
+        var channel = _.find(channels, { name: channelName });
+        var subscribers = channel.subscribers;
+
+        _.remove(subscribers, { id: id });
+
+        if (_.isEmpty(subscribers)) {
+          unsubscribe(channel);
+        }
+      }
+    }
+
+    function getSubscriber(id, channelName) {
+      var subscriber;
+      var channel = _.find(channels, { name: channelName });
+
+      if (channel) {
+        subscriber = _.find(channel.subscribers, { id: id });
+      } else {
+        throw new Error('There is no listener registered for your scope ' +
+                        'on the channel \"' + channelName + '\"');
+      }
+
+      return subscriber;
+    }
+
+    function unsubscribe(channel) {
+      var subscription = channel.subscription;
+
+      if (subscription) {
+        cometd.unsubscribe(subscription);
+      }
+
+      _.remove(channels, channel);
+    }
+
+    /**
+     * @ngdoc function
+     * @name destroySubscription
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * Destroys the subscription for given id and channel it it is active.
+     *
+     * @param {string} subscriberId Unique subscription id, using the id of scope responsible for handling subscription is recommended.
+     * @param {string} channelName Subscribed channel.
+     *
+     * @example
+     * <pre>
+     *   var id = $scope.$id;
+     *   var channel = '/operations/*';
+     *   c8yRealtime.destroySubscription(id, channel);
+     * </pre>
+     */
+    function destroySubscription(subscriberId, channelName) {
+      removeSubscriber(subscriberId, channelName);
+    }
+
+    /*
+     * Leverage some c8yRealtime service APIs to support comma-separated channel
+     * name in a channel segment (e.g. /measurements/10200,10201,10202).
+     */
+    function commaSeparatedChannelSegmentDecorator(func) {
+      // drop `func` argument -> [subscriberId, channelName, ...]
+      var args = _.drop(arguments);
+      var channelFullName = args[1];
+
+      var channelNames = collectChannelNames(channelFullName);
+
+      _.forEach(channelNames, function (channelName) {
+        args[1] = channelName;
+        func.apply(this, args);
+      }.bind(this));
+    }
+
+    function collectChannelNames(channelFullName) {
+      var channelNames = [];
+
+      /*
+       * Matches patterns like:
+       * - /measurements/10200,10201,10202
+       * - /measurements/10200
+       * - /alarms/*
+       * - ... etc.
+       */
+      var matches = channelFullName.match(/(\/.*)\/(.*)$/);
+
+      if (_.isEmpty(matches)) {
+        channelNames.push(channelFullName);
+      } else {
+        var channelBaseName = matches[1];
+        var channelSegmentNames = matches[2].split(',');
+
+        _.forEach(channelSegmentNames, function (channelSegmentName) {
+          channelNames.push(channelBaseName + '/' + channelSegmentName);
         });
       }
-      lastConnect = moment();
-    } else {
-      bus.$emit('connectfailure', data);
-    }
-  });
 
-  cometd.addListener('/meta/disconnect', function () {
-    disconnecting = false;
-    if (typeof restartConnection === 'function') {
-      restartConnection();
-      restartConnection = undefined;
+      return channelNames;
     }
-  });
 
-  cometd.addListener('/meta/subscribe', function (msg) {
-    if (msg.successful) {
-      var scope = subscriptionMap[msg.subscription].scope,
-      subscribers = subscriptionMap[msg.subscription].subscribers;
-      subscriptionMap[msg.subscription].ready = true;
-      overallSubscriptions++;
-      for (var id in subscribers) {
-        if (subscribers[id].active) {
-          scope.$emit(id+'-subscribed');
+    /**
+     * @ngdoc function
+     * @name icon
+     * @methodOf c8y.core.service:c8yRealtime
+     *
+     * @description
+     * Gets icon for subscription activity status.
+     *
+     * @param {boolean} state Subscription activity status.
+     *
+     * @example
+     * <pre>
+     *   var channel = '/operations/*';
+     *   $scope.realtimeActive = function () {
+     *     return c8yRealtime.getStatus($scope.$id, channel);
+     *   };
+     *   $scope.realtimeIcon = function() {
+     *     var state = $scope.realtimeActive();
+     *     if (state !== undefined) {
+     *       return c8yRealtime.icon(state);
+     *     }
+     *     return c8yRealtime.icon(false);
+     *   };
+     * </pre>
+     */
+    function icon(state) {
+      return state ? 'check-circle-o' : 'circle-o';
+    }
+
+    function watch(config) {
+      var subscriberId = config.id || String(Math.random()).substr(2);
+      var channelName = config.channel;
+      var subscribedEventNames = _.flattenDeep([config.ops || _.values(realtimeActions())]);
+      var listener = config.onUpdate || _.noop;
+
+      _.forEach(subscribedEventNames, function (subscribedEventName) {
+        addListener(subscriberId, channelName, subscribedEventName, listener);
+      });
+
+      start(subscriberId, channelName);
+
+      return {
+        stop: function () {
+          stop(subscriberId, channelName);
         }
-      }
-      apply();
-    } else {
-      if (!cometd.isDisconnected() && overallSubscriptions === 0) {
-        cometd.disconnect();
-        disconnecting = true;
-      }
-    }
-  });
-
-  cometd.addListener('/meta/unsubscribe', function () {
-    overallSubscriptions--;
-    if (!cometd.isDisconnected() && overallSubscriptions === 0) {
-      if (abortConnection) {
-        $timeout.cancel(abortConnection);
-        abortConnection = undefined;
-      }
-      cometd.disconnect();
-      disconnecting = true;
-    }
-  });
-
-  function initConnection() {
-    if (cometd.isDisconnected() && !restartConnection) {
-      if (disconnecting) {
-        restartConnection = function() {
-          cometd.handshake();
-        };
-      } else {
-        cometd.handshake();
-      }
-    }
-
-    // if (!connectListener) {
-    //   addConnectListener();
-    // }
-  }
-
-  function newAbortConnectionTimer() {
-    return $timeout(function() {
-      cometd.getTransport().abort();
-    },timeout);
-  }
-
-  function subscribe(channel) {
-    if (cometd.isDisconnected()) {
-      initConnection();
-      subscriptionQueue.push(channel);
-      return;
-    }
-
-    var subObj = cometd.subscribe(channel, function (msg) {
-      var scope = subscriptionMap[channel].scope;
-      scope.$emit(msg.data.realtimeAction, msg.data.data);
-      if (abortConnection) {
-        $timeout.cancel();
-        abortConnection = newAbortConnectionTimer();
-      }
-      apply();
-    });
-    abortConnection = newAbortConnectionTimer();
-
-    if (!subscriptionMap[channel].subObj) {
-      subscriptionMap[channel].subObj = subObj;
-    }
-
-    return subObj;
-  }
-
-  function unsubscribe(subObj) {
-    if (subObj) {
-      cometd.unsubscribe(subObj);
-    }
-  }
-
-  // function addConnectListener() {
-  //   connectListener = cometd.addListener('/meta/connect', function () {
-  //     subscriptionQueue.forEach( function (s) {
-  //       subscribe(s);
-  //     });
-  //     cometd.removeListener(connectListener);
-  //     connectListener = undefined;
-  //     subscriptionQueue.length = 0;
-  //   });
-  // }
-
-  function apply() {
-    if (!$rootScope.$$phase) {
-      $rootScope.$apply();
-    }
-  }
-
-  /**
-   * @ngdoc function
-   * @name switchRealtime
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * If subscription defined by id and channel is active then it is stopped.
-   * Otherwise it is started.
-   *
-   * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
-   * @param {string} channel Subscribed channel.
-   *
-   * @example
-   * <pre>
-   *   var id = $scope.$id;
-   *   var channel = '/operations/*';
-   *   c8yRealtime.switchRealtime(id, channel);
-   * </pre>
-   */
-  function switchRealtime(id, channel) {
-    if(subscriptionMap[channel].subscribers[id].active) {
-      stop(id, channel);
-    }else {
-      start(id, channel);
-    }
-  }
-
-  /**
-   * @ngdoc function
-   * @name icon
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * Gets icon for subscription activity status.
-   *
-   * @param {boolean} status Subscription activity status.
-   *
-   * @example
-   * <pre>
-   *   var channel = '/operations/*';
-   *   $scope.realtimeActive = function () {
-   *     return c8yRealtime.getStatus($scope.$id, channel);
-   *   };
-   *   $scope.realtimeIcon = function() {
-   *     var state = $scope.realtimeActive();
-   *     if (state !== undefined) {
-   *       return c8yRealtime.icon(state);
-   *     }
-   *     return c8yRealtime.icon(false);
-   *   };
-   * </pre>
-   */
-  function getIcon(status) {
-    return icons[status];
-  }
-
-  function getSubscriptionMap() {
-    return subscriptionMap;
-  }
-
-  /**
-   * @ngdoc function
-   * @name realtimeActions
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * Gets the map of available realtime actions.
-   *
-   * @returns {object} Object containing the map of available realtime actions. It includes the following actions:
-   *
-   * - **CREATE** - item has been created,
-   * - **UPDATE** - item has been updated,
-   * - **DELETE** - item has been removed.
-   *
-   * @example
-   * See usage example {@link c8y.core.service:c8yRealtime#example here}.
-   */
-  function getRealtimeActions() {
-    return realtimeActions;
-  }
-
-  /**
-   * @ngdoc function
-   * @name getStatus
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * Gets status for given subscription id and channel.
-   *
-   * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
-   * @param {string} channel Subscribed channel.
-   *
-   * @returns {boolean} Boolean value indicating whether given subscription is active or not.
-   *
-   * @example
-   * <pre>
-   *   var id = $scope.$id;
-   *   var channel = '/operations/*';
-   *   var subscriptionActivityStatus = c8yRealtime.getStatus(id, channel);
-   * </pre>
-   */
-  function getStatus(id, channel) {
-    var channelObj = subscriptionMap[channel];
-    if (channelObj === undefined) {
-      return false;
-    }
-    var subscriber = channelObj.subscribers[id];
-    return subscriber && subscriber.hasOwnProperty('active') ? subscriber.active : false;
-  }
-
-  /**
-   * @ngdoc function
-   * @name removeSubscriber
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * First calls {@link c8y.core.service:c8yRealtime#methods_stop stop(id, channel)}
-   * and then removes all listeners for given subscription id and channel.
-   * If this was the last subscription on given channel then the broadcasting scope
-   * would be destroyed.
-   *
-   * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
-   * @param {string} channel Subscribed channel.
-   *
-   * @example
-   * <pre>
-   *   var id = $scope.$id;
-   *   var channel = '/operations/*';
-   *   c8yRealtime.removeSubscriber(id, channel);
-   * </pre>
-   */
-  function removeSubscriber(id, channel) {
-    if (getStatus(id,channel) === false) {
-      throw new Error('There is no listener registered for your scope on the channel \"'+channel+'\"');
-    }
-    stop(id, channel);
-    delete subscriptionMap[channel].subscribers[id];
-    if (Object.keys(subscriptionMap[channel].subscribers).length === 0) {
-      subscriptionMap[channel].scope.$destroy();
-      delete subscriptionMap[channel];
-    }
-  }
-
-  /*
-   * creates a scope for broadcasting realtime events for this channel. if there is already another
-   * listener for this channel no new scope will be created and instead a new listener will be
-   * added to the scope.
-   *
-   * @param id: the id of the scope that subscribes to the service
-   * @param channel: the channel that will be subscribed
-   */
-
-  function init(id, channel) {
-    if (!subscriptionMap[channel]) {
-      subscriptionMap[channel] = {
-          scope: $rootScope.$new(true),
-          subscribers: {},
-          activeSubscribers: 0,
-          subObj: undefined,
-          ready: false
-        };
-    }
-    subscriptionMap[channel].subscribers[id] = {
-        listeners: [],
-        unreg: undefined
       };
-  }
-
-  /**
-   * @ngdoc function
-   * @name addListener
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * Adds a new Listener to a realtime channel for the given scope id.
-   *
-   * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
-   * @param {string} channel Subscribed channel.
-   * @param {string} watch the event name on the channel that triggers the function
-   * @param {function} func the function that will be triggered by the event
-   *
-   * @example
-   * See usage example {@link c8y.core.service:c8yRealtime#example here}.
-   */
-  function addListener(id, channel, watch, func) {
-    if (!subscriptionMap[channel] || !subscriptionMap[channel].subscribers[id]) {
-      init(id, channel);
-    }
-    subscriptionMap[channel].subscribers[id].listeners.push({
-      watch: watch,
-      func: func
-    });
-  }
-
-  /**
-   * @ngdoc function
-   * @name start
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * Starts listening for realtime notifications for given id and channel.
-   * Registers all listeners added previously for the channel using
-   * {@link c8y.core.service:c8yRealtime#methods_addListener addListener} method.
-   *
-   * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
-   * @param {string} channel Subscribed channel.
-   *
-   * @example
-   * See usage example {@link c8y.core.service:c8yRealtime#example here}.
-   */
-  function start(id, channel) {
-    if (subscriptionMap[channel] === undefined) {
-      throw new Error('There is no listener registered for your scope on the channel \"'+channel+'\"');
-    }
-    var scope = subscriptionMap[channel].scope,
-     listeners = subscriptionMap[channel].subscribers[id].listeners,
-     unreg = [];
-    for (var listener in listeners) {
-      unreg.push({
-        watch: listeners[listener].watch,
-        func: scope.$on(listeners[listener].watch, listeners[listener].func)
-      });
-    }
-    subscriptionMap[channel].subscribers[id].unreg = unreg;
-    subscriptionMap[channel].subscribers[id].active = true;
-
-    if (subscriptionMap[channel].activeSubscribers === 0) {
-      subscribe(channel);
-    } else if (subscriptionMap[channel].ready){
-      scope.$emit(id+'-subscribed');
-    }
-    subscriptionMap[channel].activeSubscribers++;
-  }
-
-  /**
-   * @ngdoc function
-   * @name stop
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * Erases all registered listeners from this scope for the channel.
-   * If no other scope is active on this channel the channel will be unsubscribed.
-   *
-   * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
-   * @param {string} channel Subscribed channel.
-   *
-   * @example
-   * See usage example {@link c8y.core.service:c8yRealtime#example here}.
-   */
-  function stop(id, channel) {
-    var scope = subscriptionMap[channel].scope,
-      unsub,
-      unreg = subscriptionMap[channel].subscribers[id].unreg;
-
-    if (unreg !== undefined) {
-      unreg.forEach(function(element) {
-        if (element.watch === id+'-unsubscribed'){
-          unsub = element.func;
-        } else {
-          element.func();
-        }
-      });
     }
 
-    if (unsub) {
-      scope.$emit(id+'-unsubscribed');
-      unsub();
-    }
-
-    subscriptionMap[channel].subscribers[id].unreg = undefined;
-    subscriptionMap[channel].subscribers[id].active = false;
-    subscriptionMap[channel].activeSubscribers--;
-    if (subscriptionMap[channel].activeSubscribers <= 0) {
-      if (subscriptionMap[channel].subObj) {
-        unsubscribe(subscriptionMap[channel].subObj);
-        subscriptionMap[channel].subObj = undefined;
-        subscriptionMap[channel].ready = false;
+    function getChannels() {
+      if (!c8yBase.getFlag('test')) {
+        console.warn('DO NOT USE THIS API CALL: it will break encapsulation, ' +
+          'use it only for doing state verification in unit test.');
       }
-      subscriptionMap[channel].activeSubscribers = 0;
+
+      return channels;
+    }
+    function status() {
+      return cometd.getStatus();
     }
   }
-
-  /**
-   * @ngdoc function
-   * @name destroySubscription
-   * @methodOf c8y.core.service:c8yRealtime
-   *
-   * @description
-   * Destroys the subscription for given id and channel it it is active.
-   *
-   * @param {string} id Unique subscription id, using the id of scope responsible for handling subscription is recommended.
-   * @param {string} channel Subscribed channel.
-   *
-   * @example
-   * <pre>
-   *   var id = $scope.$id;
-   *   var channel = '/operations/*';
-   *   c8yRealtime.destroySubscription(id, channel);
-   * </pre>
-   */
-  function destroySubscription(id, channel) {
-    if (getStatus(id, channel) === true) {
-      removeSubscriber(id, channel);
-    }
-  }
-
-  return {
-    start: start,
-    stop: stop,
-    bus: function () {
-      return bus;
-    },
-    addListener: addListener,
-    removeSubscriber: removeSubscriber,
-    switchRealtime: switchRealtime,
-    icon: getIcon,
-    getStatus: getStatus,
-    realtimeActions: getRealtimeActions,
-    destroySubscription: destroySubscription,
-    //for testing
-    getSubscriptionMap: getSubscriptionMap
-  };
-}]);
+}());
