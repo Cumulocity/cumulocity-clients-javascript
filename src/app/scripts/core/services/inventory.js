@@ -1015,7 +1015,7 @@
       return list(filters)
         .then(function (_parents) {
           return (moType || moFragmentType) ?
-            _.filter(_parents, createFilterForTypes(moType, moFragmentType)) :
+            createFilterForTypes(moType, moFragmentType)(_parents) :
             _parents;
         });
     }

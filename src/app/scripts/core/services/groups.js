@@ -76,16 +76,13 @@
      */
     function getGroupAssetsAndDevices(group) {
       var groupId = String(c8yBase.getId(group));
-      var rejectAddition = function (item) {
+      var rejectAdditions = c8yBase.createListFilter(function (item) {
         var additionParentsIds = _.map(
           _.get(item, 'additionParents.references'),
           _.property('managedObject.id')
         );
-        return _.includes(additionParentsIds, groupId);
-      };
-      var rejectAdditions = function (items) {
-        return _.reject(items, rejectAddition);
-      };
+        return !_.includes(additionParentsIds, groupId);
+      });
       return getGroupItems(group)
         .then(rejectAdditions);
     }

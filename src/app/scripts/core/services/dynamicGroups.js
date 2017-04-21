@@ -4,15 +4,6 @@
   angular.module('c8y.core')
     .factory('c8yDynamicGroups', c8yDynamicGroups);
 
-  c8yDynamicGroups.$inject = [
-    '$q',
-    'c8yBase',
-    'c8yModal',
-    'c8yInventory',
-    'c8yQueriesUtil',
-    'c8yFilteringSorting'
-  ];
-
   /**
    * @ngdoc service
    * @name c8y.core.service:c8yDynamicGroups
@@ -20,13 +11,14 @@
    * @description
    * Service for managing dynamic groups of devices.
    */
+  /* @ngInject */
   function c8yDynamicGroups(
     $q,
     c8yBase,
     c8yModal,
     c8yInventory,
     c8yQueriesUtil,
-    c8yFilteringSorting
+    c8yFilteringSortingInventoryQueries
   ) {
     var DYNAMIC_GROUP_TYPE = 'c8y_DynamicGroup';
     var DYNAMIC_GROUP_FRAGMENT = 'c8y_IsDynamicGroup';
@@ -90,7 +82,7 @@
      */
     function create(dynamicGroup, columns, columnsConfig) {
       dynamicGroup[COLUMNS_CONFIG_FRAGMENT] = columnsConfig;
-      dynamicGroup[QUERY_STRING_FRAGMENT] = c8yQueriesUtil.buildQuery(c8yFilteringSorting.getQueryForColumnsAndColumnsConfig(columns, columnsConfig));
+      dynamicGroup[QUERY_STRING_FRAGMENT] = c8yQueriesUtil.buildQuery(c8yFilteringSortingInventoryQueries.getQuery(columns, columnsConfig));
       return c8yInventory.create(dynamicGroup).then(c8yBase.getResData);
     }
 
@@ -165,7 +157,7 @@
     function saveColumnsConfig(group, columns, columnsConfig) {
       var o = {id: group.id || group};
       o[COLUMNS_CONFIG_FRAGMENT] = columnsConfig;
-      o[QUERY_STRING_FRAGMENT] = c8yQueriesUtil.buildQuery(c8yFilteringSorting.getQueryForColumnsAndColumnsConfig(columns, columnsConfig));
+      o[QUERY_STRING_FRAGMENT] = c8yQueriesUtil.buildQuery(c8yFilteringSortingInventoryQueries.getQuery(columns, columnsConfig));
       return c8yInventory.save(o);
     }
 

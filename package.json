@@ -1,15 +1,14 @@
 {
   "name": "cumulocity-clients-javascript",
-  "version": "8.0.0",
+  "version": "8.1.0",
   "description": "Cumulocity core services on top of Angular.js for rapid web application development",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "./scripts/build.sh"
   },
   "devDependencies": {
-    "grunt": "^0.4.5",
-    "grunt-contrib-uglify": "^0.9.1",
-    "lodash": "^4.16.2"
+    "uglify-js": "2.8.21"
   },
   "keywords": [
     "cumulocity",
