@@ -357,6 +357,29 @@
       }, filter);
     }
 
+    function createListFilter(filterFn) {
+      var fn = function (list) {
+        var paging = list.paging;
+        var propertiesToFilter = ['refresh', 'next'];
+
+        _.forEach(propertiesToFilter, function (p) {
+          var _p = '__' + p;
+          if (!paging[_p] && paging[p]) {
+            paging[_p] = paging[p];
+            paging[p] = function () {
+              return paging[_p]().then(fn);
+            };
+          }
+        });
+
+        var filtered =  list.filter(filterFn);
+        filtered.statistics = list.statistics;
+        filtered.paging = list.paging;
+        return filtered;
+      };
+      return fn;
+    }
+
     function getParamFromUrl(paramName, url) {
       var params = {};
       if (url) {
@@ -900,6 +923,7 @@
       todayFilter: todayFilter,
       fromThisMonthStartFilter: fromThisMonthStartFilter,
       monthFilter: monthFilter,
+      createListFilter: createListFilter,
       cleanListCallback: cleanListCallback,
       removeFromList: removeFromList,
       cleanFields: cleanFields,

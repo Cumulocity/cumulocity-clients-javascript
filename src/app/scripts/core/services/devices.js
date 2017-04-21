@@ -100,36 +100,12 @@
       }, filter || {});
     }
 
-    function createfilter(filterFn) {
-      var fn = function (managedObjects) {
-        var paging = managedObjects.paging;
-        var propertiesToFilter = ['refresh', 'next'];
-
-        _.forEach(propertiesToFilter, function (p) {
-          var _p = '__' + p;
-          if (!paging[_p] && paging[p]) {
-            paging[_p] = paging[p];
-            paging[p] = function () {
-              return paging[_p]().then(fn);
-            };
-          }
-        });
-
-        var filtered =  managedObjects.filter(filterFn);
-        filtered.statistics = managedObjects.statistics;
-        filtered.paging = managedObjects.paging;
-        return filtered;
-      };
-      return fn;
-    }
-
-
-    var filterDevices = createfilter(filterDeviceFragment);
+    var filterDevices = c8yBase.createListFilter(filterDeviceFragment);
     function filterDeviceFragment(mo) {
       return !!mo[deviceFragmentType];
     }
 
-    var filterAllDevices = createfilter(filterNoDevices);
+    var filterAllDevices = c8yBase.createListFilter(filterNoDevices);
     function filterNoDevices(mo) {
       var keys = KEYS_FOR_NODEVICE;
       var ownerReg = /^device_/;
