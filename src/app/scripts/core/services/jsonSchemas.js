@@ -220,7 +220,7 @@
     /**
      * @ngdoc function
      * @name remove
-     * @methodOf c8y.core.service:c8yJsonSchema
+     * @methodOf c8y.core.service:c8yJsonSchemas
      *
      * @description
      * Removes schema.
@@ -240,4 +240,3 @@
     }
   }
 })();
-

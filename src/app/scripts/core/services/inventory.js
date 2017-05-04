@@ -68,6 +68,7 @@
         'currentPage',
         'skipChildrenNames',
         'fragmentType',
+        'withParents',
         'q',
         'query'
       ];
