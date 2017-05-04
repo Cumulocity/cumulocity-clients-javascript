@@ -699,11 +699,11 @@
       if (!request) {
         request = {
           deferred: $q.defer(),
-          sendThrottled: function () {
-            request._sendThrottled();
+          sendDebounced: function () {
+            request._sendDebounced();
             return request.deferred.promise;
           },
-          _sendThrottled: _.throttle(function () {
+          _sendDebounced: _.debounce(function () {
             listSeries(request.filters)
               .then(_.unary(request.deferred.resolve));
           }, 500),
@@ -715,7 +715,7 @@
       request.filters.series = _.uniq((request.filters.series || []).concat([seriesName]));
 
       return $timeout(function () {
-        return request.sendThrottled()
+        return request.sendDebounced()
           .then(callbackForListDataPoint(dataPoint))
           .then(function (obj) {
             obj.aggregation = aggregation;

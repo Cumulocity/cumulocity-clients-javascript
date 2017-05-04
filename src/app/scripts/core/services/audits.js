@@ -195,7 +195,6 @@
       return $http.get(url);
     }
 
-
     /**
      * @ngdoc function
      * @name create
