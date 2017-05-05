@@ -1,19 +1,27 @@
 {
   "name": "cumulocity-clients-javascript",
   "version": "8.2.0",
-  "description": "Cumulocity core services on top of Angular.js for rapid web application development",
-  "main": "index.js",
+  "description": "Cumulocity core services on top of AngularJS for rapid web application development",
+  "keywords": [
+    "cumulocity",
+    "m2m"
+  ],
+  "homepage": "https://www.cumulocity.com",
+  "bugs": "https://github.com/Cumulocity/cumulocity-clients-javascript/issues",
+  "license": "MIT",
+  "author": "Cumulocity GmbH",
+  "main": "build/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cumulocity/cumulocity-clients-javascript.git"
+  },
   "scripts": {
+    "install:clean": "(yarn upgrade || yarn install) && bower i",
+    "update": "yarn upgrade-interactive",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "./scripts/build.sh"
   },
   "devDependencies": {
     "uglify-js": "2.8.21"
-  },
-  "keywords": [
-    "cumulocity",
-    "m2m"
-  ],
-  "author": "Cumulocity GmbH",
-  "license": "MIT"
+  }
 }
