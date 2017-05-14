@@ -16,12 +16,16 @@
     "url": "https://github.com/Cumulocity/cumulocity-clients-javascript.git"
   },
   "scripts": {
-    "install:clean": "(yarn upgrade || yarn install) && bower i",
+    "install:clean": "(yarn upgrade || yarn install) && rimraf bower_components && bower i",
     "update": "yarn upgrade-interactive",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "./scripts/build.sh"
+    "build": "node ./build.js"
   },
   "devDependencies": {
+    "fs-extra": "3.0.1",
+    "ng-annotate": "1.2.1",
+    "rimraf": "2.6.1",
+    "shelljs": "0.7.7",
     "uglify-js": "2.8.21"
   }
 }
