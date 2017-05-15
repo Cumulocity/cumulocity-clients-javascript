@@ -1,20 +1,20 @@
 {
   "name": "cumulocity-clients-javascript",
-  "version": "8.1.0",
-  "authors": [
-    "Cumulocity GmbH"
-  ],
-  "description": "Cumulocity core services on top of Angular.js for rapid web application development",
-  "main": "build/main.js",
-  "moduleType": [
-    "globals"
-  ],
+  "version": "8.2.0",
+  "description": "Cumulocity core services on top of AngularJS for rapid web application development",
   "keywords": [
     "cumulocity",
     "m2m"
   ],
+  "homepage": "https://www.cumulocity.com",
   "license": "MIT",
-  "homepage": "http://www.cumulocity.com",
+  "authors": [
+    "Cumulocity GmbH"
+  ],
+  "main": "build/main.js",
+  "moduleType": [
+    "globals"
+  ],
   "dependencies": {
     "lodash": "4.16.2",
     "jquery": "3.1.1",
